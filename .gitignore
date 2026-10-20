@@ -12,6 +12,8 @@ cs.toml
 profile.toml
 profile.personal.toml
 ask.toml
+# Deployer-specific operational memory; contains private connection metadata.
+.signalnest-local/
 # Local raw capture contains named student and academic records; commit only its redacted structure.
 research/fixtures/list-links-20261009/ek-public-link-20261009T030441987287Z.html
 
@@ -57,5 +59,16 @@ docs/validation/n2-*.json
 docs/validation/query-daily-*.json
 docs/validation/query-proxy-*.json
 docs/validation/query-readiness-*.json
+# Local production observations and detailed replay evidence may expose host or notice data.
+docs/validation/n2-*.md
+docs/validation/agent-deployment-audit-*.md
+docs/validation/agent-deployment-audit-*.json
+docs/validation/notification-delivery-audit-*.md
+docs/validation/query-readiness-*.md
+docs/validation/notification-applicant-*.json
+docs/validation/notification-open-opportunities-*.json
+docs/validation/open-opportunity-review-v*.md
+docs/validation/open-opportunity-validation-v*.json
+tests/fixtures/notification-*-real.json
 research/experiments/query_five_20261015/material-manifest.json
 research/experiments/query_five_20261015/integrity-check.json

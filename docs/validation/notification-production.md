@@ -10,12 +10,13 @@
 - [有限指令回归清单](notification-current-instruction-cases.json)与[当前结果](notification-current-instruction-current.json)
 - [原始漏报表达清单](notification-original-misses-cases.json)与[当前结果](notification-original-misses-current.json)
 - [CS 离线输入](cs-offline-cases.json)与[紧凑汇总](cs-offline-current.json)
+- [申请主体规则与合成回归说明](notification-applicant-scope-v9.md)
 
 历史材料保留聚焦的 v5/v7 失败回归、清单变更记录和一个精简 v6 决策兼容样本。重复的多版本全量输出已从待推送内容中裁掉；测试继续比较固定输入、关键 Action 和版本边界。
 
 ## 版本与运行
 
-当前 facts/rules/decision 为 v8，routing 为 v1；WHU、EMS 和 CS Parser 分别保持自身版本。变更规则不会静默重写旧决策或冻结邮件。新代码需要由实例明确迁移和启用。
+当前源码 facts/rules/decision 为 v10，routing 为 v1；WHU、EMS 和 CS Parser 保持自身版本。开放机会回顾新增本地迁移0009，生产尚未升级。变更规则不会静默重写旧决策或冻结邮件；WSL 生产仍为 v8，新代码发布后须显式更新实例政策。
 
 从仓库根目录运行评估器时，为每份输出指定一个尚不存在的路径：
 
@@ -26,6 +27,8 @@
 
 ## 独立人工评价进度
 
-六组共 31 个情境仍全部符合当前工程期望，规则保持 v8。本轮仅更新至有真实失败依据的 UC Parser v5/CS v3，并重新回放，已支持模板的内容摘要保持。工程标签不等于真人评价。
+原六组31个工程情境与人工评价进度分开维护；工程期望不等于真人评价。v9申请主体修复由短合成文本回归覆盖，原公告正文、逐条评估快照和机器运行记录留在本地研究记录中，不随代码提交。
 
 新增[人工入口](../human-review.md)绑定完整输入与冻结回放证据，[当前待确认结果](human-review-pending-20261011.json)为 31 个通知情境加 15 个搜索查询，0 confirmed、46 pending。未替用户创建标签；漏报/误报率在无人工分母时均为 null。工程回归和后续人工子集统计分别报告，旧决策和已冻结邮件不改写。
+
+当前源码为v10，生产仍为v8。分组期限、开放机会回顾和后续阶段边界由代码测试覆盖；真实公告逐条报告不公开。旧人工评价包和既有决策保持原样，不把新增工程判断转换成人工标签。

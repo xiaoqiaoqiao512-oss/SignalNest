@@ -1,6 +1,8 @@
 # SignalNest
 
-单用户、自托管、长期运行的个人校园信息助手，采用 Python 模块化单体。首个信息源为武汉大学本科生院“学生通知”。**采集、离线恢复、政策 v8、邮件计划/冻结、SMTP 发送恢复、后台邮件入口及基础历史搜索已实现**。使用外部定时模板触发有界单次运行，没有 Python 常驻调度器；邮件默认关闭，显式启用后可自动计划并发送。WSL/Linux 已完成 0008 升级、真实完整列表扫描、首页复核、持久成功时间和隔离恢复，见[升级验收](docs/validation/n2-wsl-upgrade-20261010.md)。此前受限实采、两封工程测试邮件的实际收件及外链阻断记录保持在[历史实机记录](docs/validation/n2-wsl-20261009.md)。生产通知及一周运行仍未验收；完整列表覆盖不表示正文积压已处理。
+单用户、自托管、长期运行的个人校园信息助手，采用 Python 模块化单体。首个信息源为武汉大学本科生院“学生通知”。**采集、离线恢复、政策 v10、邮件计划/冻结、SMTP 发送恢复、后台邮件入口及基础历史搜索已实现**。使用外部定时模板触发有界单次运行，没有 Python 常驻调度器；邮件默认关闭，显式启用后可自动计划并发送。WSL/Linux 已完成 0008 升级、真实完整列表扫描、首页复核、持久成功时间和隔离恢复，见[升级验收](docs/validation/n2-wsl-upgrade-20261010.md)。此前受限实采、两封工程测试邮件的实际收件及外链阻断记录保持在[历史实机记录](docs/validation/n2-wsl-20261009.md)。生产通知及一周运行仍未验收；完整列表覆盖不表示正文积压已处理。
+
+当前源码政策 v10 保留 v9 的申请主体修复，并修正并列报名对象、表格/带秒期限和分组截止；新增较早发布但仍开放的机会回顾，以及显式可选的模型语义复核。见[机会回顾用法](docs/open-opportunity-review.md)。最近生产核验仍是 v8/schema0008；**本轮未部署 v10、执行生产迁移或补发邮件**。既有实例需备份、显式迁移和政策更新，旧决策与冻结邮件保持不变。
 
 2026-10-08 开始的新迭代 **N0 规则对齐 → N1 助教招聘 → N2 部署运行验收 → N3 基础搜索** 单列于[迭代记录](docs/iteration-20261008.md)。下文原邮件模块 N0–N4 编号继续保留。新 N1 已提供[助教招聘的离线判断与预览](docs/teaching-assistant.md)，含真实历史招聘正例和独立 EMS 详情 Parser；计算机学院本科教学的脱敏样本离线验收见[离线适配记录](docs/cs-undergrad.md)，后续已接入显式 CS 来源的有界采集、缓存、入库及独立定时模板，见[CS 采集说明](docs/cs-collection.md)。抓到历史助教正文不表示当期仍可申请，生产通知及连续运行验收仍独立进行。
 
@@ -37,7 +39,7 @@ uv run --locked signalnest config-check --config signalnest.toml
 
 `[source].parser` 明确选择 `whu-student-notices`（旧 UC 配置省略时的默认值）或 `cs-undergrad-notices`。它同时绑定列表/详情 Parser、解析版本及请求/重定向许可，不从主机、身份或解析失败猜选来源。CS 示例为 `config.cs.example.toml`；使用独立配置、数据目录、数据库、启用基线和实例锁，勿覆盖既有 UC 配置。`crawl-once`、`scheduled-run`、`import-page`、`reparse` 均使用这一绑定。EMS 仍仅离线预览。
 
-当前 UC Parser v5 / CS v3，补充实际归档中已确认的正文包装，并限定文章层级以免正文内部重复 ID 误判。旧解析产物保留；规范化、身份和分页规则、政策 v8 保持。已归档失败正文可离线 `reparse`，不伪造新获取或更新邮件。专用 `signalnest-cs@.service` / `signalnest-cs-regular.timer` 每小时 :15 做小额度受限采集，读取可选 SMTP EnvironmentFile；邮件及通知仍须独立显式启用，见[CS 采集说明](docs/cs-collection.md)。
+当前 UC Parser v5 / CS v3，补充实际归档中已确认的正文包装，并限定文章层级以免正文内部重复 ID 误判。旧解析产物保留；规范化、身份和分页规则保持；本次政策 v10 不改 Parser。已归档失败正文可离线 `reparse`，不伪造新获取或更新邮件。专用 `signalnest-cs@.service` / `signalnest-cs-regular.timer` 每小时 :15 做小额度受限采集，读取可选 SMTP EnvironmentFile；邮件及通知仍须独立显式启用，见[CS 采集说明](docs/cs-collection.md)。
 
 `[runtime]` 配置详情配额、复查日期档与有限错误延期；`[runtime.regular]` / `[runtime.full]` 为外部触发的单次任务预算。旧配置可以省略 runtime，使用新默认政策。定时频率由外部 timer 决定，不能用 HTTP 请求间隔设置。示例字段与行为见 [处理政策](docs/runtime-policy.md)。
 
@@ -47,7 +49,7 @@ uv run --locked signalnest config-check --config signalnest.toml
 uv run --locked signalnest storage-init --config signalnest.toml
 ```
 
-命令创建数据目录、`raw/`、数据库父目录，并通过 Alembic 升级至最新迁移（当前 `0008_list_references`）。重复运行保留数据，后续安装新版本也用此命令升级；不使用 `create_all`，不提供清空或降级命令。成功退出码为 0，存储/处理错误为 1，配置、导入元数据或命令用法错误为 2。迁移失败回滚，已创建的目录或空数据库文件可能保留。导入和重新解析要求已初始化到最新迁移，不会隐式建库或升级。
+命令创建数据目录、`raw/`、数据库父目录，并通过 Alembic 升级至最新迁移（当前 `0009_opportunity_review`）。重复运行保留数据，后续安装新版本也用此命令升级；不使用 `create_all`，不提供清空或降级命令。成功退出码为 0，存储/处理错误为 1，配置、导入元数据或命令用法错误为 2。迁移失败回滚，已创建的目录或空数据库文件可能保留。导入和重新解析要求已初始化到最新迁移，不会隐式建库或升级。
 
 可在临时目录验证（macOS / Linux）：
 
@@ -268,7 +270,7 @@ stdout 为 JSON：事实、短原文证据、资格/时间三值判断、Action�
 
 `--event-kind {new,update,activation_recent,historical}` 与 `--mode {hybrid,digest_only}` 仅声明预览上下文。update 可给 `--previous-notice-json` 和 `--previous-route`，缺少旧内容则标明比较未知。首启预览默认汇总，可信截止不晚于下一次 Digest 时保留紧急路线；显式 digest_only 仍优先。命令不证明实际发生新内容或此前已登记邮件资格。校验/参数错误退出 2，Parser 无法支持输入页面退出 1，成功预览退出 0。
 
-当前政策 v8 补完两个原始行动表达的漏报：固定“即日起接受报名”和“请登录学校系统报名辅修专业”及当天截止，修复前分别为 DIGEST、IGNORE，修复后均为 PUSH_NOW/deadline_soon。没有删除“接受”、添加“完成”或改画像让样本通过；完整本地输入、内容摘要和实际前后结果见[原句修复记录](docs/validation/notification-original-misses-20261010.md)。沿用 v6 的已绑定正文指令确认，不推造开始日期；菜单、历史、查询记录、缴费和退课仍被排除，新生选课的“辅修专业单独缴费”仍不触发辅修提醒。[生产评估](docs/validation/notification-production.md)分开记录 13 项真实情境、原 2 项合成情境、6 项助教情境、2 项有限指令边界、6 项 CS 情境及本次 2 项原句回归；工程期望不作为人工 gold。可离线重放：
+政策 v8 补完两个原始行动表达的漏报，v9 保留该行为：固定“即日起接受报名”和“请登录学校系统报名辅修专业”及当天截止，修复前分别为 DIGEST、IGNORE，修复后均为 PUSH_NOW/deadline_soon。没有删除“接受”、添加“完成”或改画像让样本通过；完整本地输入、内容摘要和实际前后结果见[原句修复记录](docs/validation/notification-original-misses-20261010.md)。沿用 v6 的已绑定正文指令确认，不推造开始日期；菜单、历史、查询记录、缴费和退课仍被排除，新生选课的“辅修专业单独缴费”仍不触发辅修提醒。[生产评估](docs/validation/notification-production.md)分开记录 13 项真实情境、原 2 项合成情境、6 项助教情境、2 项有限指令边界、6 项 CS 情境及本次 2 项原句回归；工程期望不作为人工 gold。可离线重放：
 
 ```sh
 uv run --locked python deploy/evaluate_notifications.py --check
@@ -280,7 +282,9 @@ uv run --locked python deploy/evaluate_notifications.py --check \
   --cases docs/validation/notification-original-misses-cases.json
 ```
 
-v7 引入的计算机学院“招募本科课程助教”、跨分号申请分支及年份冲突判断保持；真实本科招募进入待核对 Digest，不把缺少年份的月日补成紧急截止。[计算机学院离线验收](docs/cs-undergrad.md)提供 `profile.cs-undergrad.example.toml`、`decision-preview --parser cs-undergrad-notices` 和独立六情境回放；现已另行接通[显式来源采集](docs/cs-collection.md)。此前五组情境输入及 Action 保持不变，实际 v7 快照另存，当前评估重新运行 v8。
+v7 引入的计算机学院“招募本科课程助教”、跨分号申请分支及年份冲突判断保持；真实本科招募进入待核对 Digest，不把缺少年份的月日补成紧急截止。[计算机学院离线验收](docs/cs-undergrad.md)提供 `profile.cs-undergrad.example.toml`、`decision-preview --parser cs-undergrad-notices` 和独立六情境回放；现已另行接通[显式来源采集](docs/cs-collection.md)。此前五组情境输入及 Action 保持不变，实际 v7/v8 快照另存；当前规则 v10 保留这些语法和主题优先级。
+
+政策 v9 按声明区分本次申请主体、已完成的教师征题和未来受益学生；“在指导教师指导下”不再变成学生的教师资格要求。明确“项目负责人必须为本科生”形成本科约束，毕业年级、团队人数、参与项目互斥和导师资质仍需核对，月份区间不推成精确截止。两篇真实申报在固定时钟下为 DIGEST / unknown / needs_review，真正面向教师征题的反例仍排除 student，role 未填仍未知；混合当前主体无法区分时保留未知。见[完整回归与版本边界](docs/validation/notification-applicant-scope-v9.md)。
 
 既有实例须显式更新政策；旧决策、已有 Digest 资格和冻结邮件不会自动撤回或重写。当前只支持有限词组与上下文、对象和时间；标题主题仍可表示普通相关信息，显式 `include_phrases` 仍是宽泛字面关注。不确定关联仅保留待核对，不凭当天截止补造关系。研究中原固定输入的 10 个 Action 已获人工确认，适配后的生产输入与工程期望另列，不能当成同一批人工准确率。未知资格和未支持表达式保留未知，图片/附件仅保留引用，不做 OCR 或下载解析。覆盖、限制、升级步骤及纯函数入口见 [原 N0 规则说明](docs/notifications.md)。[原 N1 设计](docs/notification-state.md)记录启用边界、独立 live 基线和原子成功事务。
 
@@ -401,7 +405,7 @@ uv run --locked signalnest decision-preview \
 
 命令结果写 stdout；结构化事件日志写 stderr，包含 UTC 时间、级别、事件名和可选 source_id/run_id/document_id/response_id/mail_id/attempt_no/stage/error_code。错误诊断也写 stderr，因此错误输出不是纯 JSON 流。日志不包含原始配置、URL、异常正文或网页正文；只在 CLI 显式配置 SignalNest 的 logger，不修改 root logger。
 
-已实现：安装/CLI/配置、数据库初始化与迁移、核心业务表、运行事实表及独立待适配引用表/约束、契约与稳定内容摘要、有界同步 HTTP Fetcher、WHU Parser、原文存储、整页幂等发现、版本/成功状态原子提交、失败登记、离线导入/重新解析、单次完整/受限扫描、独立详情补抓/复查、分组处理与到期政策、只读诊断、运行摘要、日志及外部定时模板、备份恢复校验程序，以及 N0 本地画像、事实提取和决策/路线预览、N1 启用/事件/决策/意图持久化，以及 N2 纯文本渲染、冻结、排他成员分配、分片和积压补计划，以及 N3 同步 SMTP 适配器、N4 发送尝试/有限重试/诊断/恢复与受限政策维护，以及政策 v8 的接受报名/直接登录报名修复、v7 的 CS 助教申请与年份冲突判断、v6 的绑定报名指令确认、v5 的助教招聘/申请主体/时间判断、v4 的主题/行动关联与不确定证据、独立 EMS 离线详情 Parser、竞赛详情模板、后台自动邮件和含邮件状态的备份校验。
+已实现：安装/CLI/配置、数据库初始化与迁移、核心业务表、运行事实表及独立待适配引用表/约束、契约与稳定内容摘要、有界同步 HTTP Fetcher、WHU Parser、原文存储、整页幂等发现、版本/成功状态原子提交、失败登记、离线导入/重新解析、单次完整/受限扫描、独立详情补抓/复查、分组处理与到期政策、只读诊断、运行摘要、日志及外部定时模板、备份恢复校验程序，以及 N0 本地画像、事实提取和决策/路线预览、N1 启用/事件/决策/意图持久化，以及 N2 纯文本渲染、冻结、排他成员分配、分片和积压补计划，以及 N3 同步 SMTP 适配器、N4 发送尝试/有限重试/诊断/恢复与受限政策维护，以及政策 v9 的申请主体/历史阶段修复、v8 的接受报名/直接登录报名修复、v7 的 CS 助教申请与年份冲突判断、v6 的绑定报名指令确认、v5 的助教招聘/申请主体/时间判断、v4 的主题/行动关联与不确定证据、独立 EMS 离线详情 Parser、竞赛详情模板、后台自动邮件和含邮件状态的备份校验。
 
 基础历史搜索、WSL 完整采集与工程邮件实收已另行验证；生产首周观察仍在原窗口内，尚未验收至少一周持续运行和当期助教自动发现。已实现有界只读查询 Agent、可配置模型适配器及一致快照查询，已有受限真实模型调用，人工质量评价仍待完成；没有后台模型判断、Embedding、向量索引或 Reranker。HTTP 必须显式调用 Fetcher 或采集入口；获取或 Parser 成功也不代表已经持久化成功。不增加用户系统、微服务、Redis、Celery、向量数据库、Docker、CI 或跨语言接口。
 
@@ -561,3 +565,7 @@ N2 本批全部完成，仅有 pending 冻结邮件，不连接 SMTP，不发送
 2026-10-10 未适配引用节点已完成：Parser v4、迁移 0008、整页引用登记与完整扫描证据已接通，新增只读 references-list 和独立待适配计数；外部正文不抓取。最终 **2038 项测试通过**（132.08 秒，新增 65 项），Ruff/格式检查覆盖 123 文件，差异检查通过。研究/fixture 和旧迁移保留；通知政策 v6 评估与搜索结果保持一致，旧快照保留。真实第 6/7 页离线导入为 48 个本站通知和 2 个引用，未进行远端升级或实采。详见[本轮验证](docs/validation/list-references-20261010.md)。
 
 2026-10-10 原始漏报补完：政策 v8，实际环境仍为 macOS 26.6.2 arm64、CPython 3.12.14、SQLite 3.53.1。完整 **2242 项离线测试通过**（116.20 秒，保留原 2201 项、增加 41 项），Ruff/格式覆盖 129 个 Python 文件。两条原样行动表达的实际 v7 DIGEST/IGNORE 失败已冻结，同一输入在 v8 均 PUSH_NOW；原 13 例、助教/CS 与 Q/R 回归保持。六组31情境重新评估，实际 v7 报告和全量政策 seal 保留，安装入口在仓库外预览通过且无存储副作用。未改研究/fixture、Parser、数据库迁移或依赖；未执行 WSL 升级、实采、实例政策更新或邮件，见[完整记录](docs/validation/notification-original-misses-20261010.md)。本轮第一项已完成，发布与目标升级为下一个交付。
+
+较早发布但仍开放的通知可用 `notifications-review-open --config signalnest.toml --at <UTC秒> --preview` 本地回顾；默认只读。明确选择通知后才用 `--apply` 登记，模型仅在预览显式提供 `--model-config ask.toml` 时调用。完整命令、来源证据和迁移边界见[说明](docs/open-opportunity-review.md)。
+
+0009为机会回顾新增操作表并扩展事件约束，保留已有事件/循环外键和冻结邮件，不自动补发。首次启用验收应同时检查“近期发布候选”和“仍开放机会回顾”；空邮件队列不证明没有漏掉机会。生产升级和登记仍是显式操作。

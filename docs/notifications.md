@@ -2,7 +2,7 @@
 
 2026-10-06 的 N0 已实现纯本地计算与 CLI 预览，这些函数仍没有持久化副作用。2026-10-07 另行完成 [N1 启用与事件持久化](notification-state.md)；现已另行完成 [N2 本地邮件计划](mail-planning.md)；[N3 SMTP 适配器](smtp.md)已完成，[N4 发送协调](mail-sending.md)与[政策维护](notification-maintenance.md)已完成。
 
-上述为旧邮件模块阶段编号。2026-10-08 开始的[新迭代 N0–N3](iteration-20261008.md)另行记录；本页当前规则为政策 v8。
+上述为旧邮件模块阶段编号。2026-10-08 开始的[新迭代 N0–N3](iteration-20261008.md)另行记录；本页当前源码规则为政策 v10；WSL 生产仍执行 v8，本轮不部署或更新线上政策。
 
 ## 可调用接口
 
@@ -71,9 +71,15 @@ v5 的助教主题使用更严格的当前招聘门槛：裸“助教/教学助�
 
 `effective_route` 在决策中一并计算：STORE_ONLY/IGNORE→none，DIGEST→digest；PUSH_NOW + hybrid 通常 immediate，digest_only→digest。activation_recent 默认降为 digest，但可信开放截止不晚于 next_digest_at 保留 immediate；digest_only 是显式用户选择，仍优先。historical 不产生主动路线。所有时钟显式传入且带 UTC offset，next_digest_at 必须晚于 now；输出 evaluated_at 统一 UTC。路线不代表邮件已经计划或发送。
 
+## 申请主体与历史阶段（政策 v9）
+
+两篇真实学生申报中的“学校面向全校教师共征集了……”是已完成的选题征集；“面向本科生的、在指导教师指导下……”描述受益学生及指导关系。v9 保留这些原句的未知项及精确位置，不把它们变成当前学生的教师 role 或 study_level 硬门槛。明确“项目负责人必须为本科生”单独形成本科约束；带否定、OR 或未支持附加条件时不能硬匹配。当前教师征题与明确当前学生申报同时存在而无法可靠区分时，相关申请约束保留 unsupported/unknown，不静默选教师。
+
+毕业年级不能负责、团队人数、同时只能参与一个项目和指导教师职称/学位等条件继续保留原文核对证据，不凭 Profile 的本科身份宣称全部符合；月份阶段不生成某日或 23:59 截止。固定输入和时钟下，两篇真实学生申报均为 DIGEST / unknown / needs_review。14147 明确“现面向全校教师征集”的当前主体仍是教师，后续本科生选题不改写本次主体；student 仍 IGNORE/ineligible，role 未填仍 unknown。有限历史、主体及指导模板不代表通用中文语义理解；v8 的接受报名/直接登录语法、跨主题优先级和菜单/历史/缴费负例保持，见[修复验证](validation/notification-applicant-scope-v9.md)。
+
 ## 版本、摘要与边界
 
-当前固定版本分别为 `whu-notice-facts-v8`、`notification-rules-v8`、`notification-decision-v8`、`notification-routing-v1`。v8 补原句接受报名与直接登录报名语法；v7 有限补本科课程助教招聘、申请分支/附加条件及学年落款冲突；v6 补已绑定当前报名指令的开放证据；v5 补助教招聘门槛、软资格和真实申请表时间；v4 补标题/正文关联、登录提交指令和不确定关系保留；保留 v3 机会/提及区分、v2 跨主题优先级、申报主体与日期规则。`compose_route` 的合成规则不变，路线版本保留 v1；WHU Parser 为 v4，独立 EMS 离线详情为 ems-notices-v1，没有改变既有正文、分页或内容摘要。变更词组/选择语义/条件或时间提取、优先规则、路线合成时更新对应版本，不读取运行中可变全局配置。`decision.policy_manifest(profile)` 返回全新可序列化快照（Profile、事实规则、决策阈值/顺序、路线规则与版本），其规范摘要为 policy_sha256；input_sha256 另纳入事实、完整 EventContext、显式决策时间。Decision 保存各版本、Profile/content/facts/policy/input 摘要、命中规则、有限理由及未知项，便于本地比较重放。新旧事实不可混合口径；decide 拒绝非当前提取器版本，需先重新提取。
+当前固定版本分别为 `whu-notice-facts-v10`、`notification-rules-v10`、`notification-decision-v10`、`notification-routing-v1`。v10补并列报名对象、截至/秒/表格和分组期限；v9历史主体修复及此前跨主题、助教、报名语法继续保留，旧版本回放独立保存。既有事件的路线行为保持；新的opportunity_review沿用首启式默认Digest及短截止例外，digest_only仍优先。UC Parser v5、CS v3、EMS离线Parser及NoticeContent摘要不变；本地schema新增0009，生产尚未升级。变更规则时显式升版，不读取运行中可变配置。`policy_manifest(profile)`冻结Profile、事实规则、决策顺序/阈值、路线与版本；input_sha256另绑定原始提取facts、EventContext和显式时钟。派生组别时间用于判断，不替换封印的原提取。decide拒绝旧提取器facts直接混用，新评估须显式重提取。
 
 原 bytes 摘要、`NoticeContent.content_sha256()`、Parser 版本保持原职责；事实摘要不替代正文摘要，规则版本不加入正文摘要。相同输入、上下文与时钟产生同一决策；新时钟/画像/上下文会产生新输入摘要，N0 纯函数本身不持久化这些结果。版本标识加固定规则清单是追溯约定，不保证跨规则改动忘记升版仍能安全恢复。
 
@@ -83,21 +89,29 @@ v5 的助教主题使用更严格的当前招聘门槛：裸“助教/教学助�
 
 ### 已有实例显式升级政策
 
-升级代码不会改写旧政策、事件、决定或被冻结邮件。新可空字段未提供或 supporting_evidence 为空时从规范快照省略，旧 `TopicMatch.context=None` 表示历史未知而非本次新分类，v1/v2/v3/v4/v5/v6/v7 Profile/Facts/Decision 原摘要仍可校验；旧 frozen mail 和固定输入的重评操作可继续读取。代码新增实时决策时，旧激活政策返回 `notification_policy_outdated`，须先显式预览和更新：
+升级代码不会改写旧政策、事件、决定或被冻结邮件。新可空字段未提供或 supporting_evidence 为空时从规范快照省略，旧 `TopicMatch.context=None` 表示历史未知而非本次新分类，v1–v8 已保存的 Profile/Facts/Decision 原摘要仍可校验；旧 frozen mail 和固定输入的重评操作可继续读取。代码新增实时决策时，旧激活政策返回 `notification_policy_outdated`，须先显式预览和更新：
 
 ```sh
 signalnest profile-check --profile profile.toml
 # 显式填写 role（若已知），核对真实样本的预览后再发布政策。
 signalnest notifications-policy-update --config config.toml \
-  --profile profile.toml --operation-id policy-v8-original-misses-20261010 --at 1791594000 --preview
+  --profile profile.toml --operation-id policy-v10-applicant-scope --at '<实际UTC秒>' --preview
 signalnest notifications-policy-update --config config.toml \
-  --profile profile.toml --operation-id policy-v8-original-misses-20261010 --at 1791594000
+  --profile profile.toml --operation-id policy-v10-applicant-scope --at '<实际UTC秒>'
 ```
 
-政策更新不自动补发历史。希望用 v8 重评未取得投递资格、仍符合窗口的当前 live 事件时，按[政策维护](notification-maintenance.md)显式选择 event ID、新 operation ID 与时钟。已有邮件资格及冻结邮件保持原路线、理由和字节；旧误命中的 Digest 资格不会因升级自动撤回，已冻结邮件也不会自动重写。旧未完成重评恢复使用旧快照，不能偷换成 v8 规则。示例时间仅为演示，正式更新使用本次操作的显式时间。
+政策更新不自动补发历史。希望用 v10 重评未取得投递资格、仍符合窗口的当前 live 事件时，按[政策维护](notification-maintenance.md)显式选择 event ID、新 operation ID 与时钟。已有邮件资格及冻结邮件保持原路线、理由和字节；旧误命中的 Digest 资格不会因升级自动撤回，已冻结邮件也不会自动重写。旧未完成重评恢复使用旧快照，不能偷换成 v9 规则。命令中的时间占位须替换为本次操作的实际 UTC Unix 秒，同一 operation ID 的预览和应用使用相同参数；本轮没有在 WSL 执行这些命令。
 
 本实现参考[通知决策调研](../research/notification-decisions.md)最新 Action+needs_review 口径，拆开认知缺口和优先级；规则仍以代码和已验证样本为准，调研中的旧验收表/IMMEDIATE/REVIEW 术语不作为实现接口。独立 live 基线、稳定启用身份、A→B→A 事件与原子 planned 意图已由 [N1](notification-state.md)实现并另行测试；N0 纯函数测试本身不证明数据库事务、SMTP、重启投递或断电恢复。
 
 ### 计算机学院真实样本（政策 v7）
 
-见[离线适配](cs-undergrad.md)与[六情境实际回放](validation/cs-offline-current.json)。真实申请分支跨分号，不能只按一处“面向研究生”硬排本科；学年与独立落款年份冲突及缺少年份的申请月日均保留原文位置，阻止伪造开放/紧急期限。当前假设本科画像得到DIGEST+needs_review，不是当前可申请的资格确认。菜单/缴费/历史报名、科研跨主题优先级及既有Action边界保持。原v6/v7快照另存，当前v8回放的Action保持；未新增人工gold，未更新目标实例政策或接入CS自动采集。
+见[离线适配](cs-undergrad.md)与[六情境实际回放](validation/cs-offline-current.json)。真实申请分支跨分号，不能只按一处“面向研究生”硬排本科；学年与独立落款年份冲突及缺少年份的申请月日均保留原文位置，阻止伪造开放/紧急期限。当前假设本科画像得到DIGEST+needs_review，不是当前可申请的资格确认。菜单/缴费/历史报名、科研跨主题优先级及既有Action边界保持。原 v6/v7/v8 快照另存，当前 v9 保留既有 Action 语义；未新增人工 gold。本次 v9 修复不改变已有 CS 自动采集或目标实例政策。
+
+## 当前规则 v10：开放机会与申请组别
+
+当前 facts/rules/decision 为 v10，routing v1。完整“本科生和研究生均可报名”形成同一个允许集合，不能只匹配后半句。仅有“或”、例外、未知资格/学籍/附件条件仍保留未知。时间支持明确“截至”与合法整数秒，同一表格行关联有限报名阶段；孤立时间标题本身不使后面的有效截止失效。未知年份、非法秒/偏移/分数秒、未理解时间声明仍不能冒充精确日期。
+
+`NoticeFacts.scoped_deadlines`保留本科、研究生、国际生等有证据的分支；无分支时省略以保留旧序列化。`deadline_for_profile`创建只供判断的时间视图，不改变原事实/hash。未知画像或同组冲突不选择最早/最晚日期；本科不借用研究生或国际生延期。国际生例外仍待核对。新规则对两个真实竞赛的有限当前征集模板结合报名安排确认开放，不把裸未来截止或近期发布日期当开放。
+
+首启七天边界保留防止历史群发，较早发布但仍开放的通知由独立[机会回顾](open-opportunity-review.md)进入评估；不是改成30天，也不伪造new。模型可在回顾预览中辅助语义判断，但目前不会覆盖规则资格、修改政策或直接发信。历史报告和人工标签保持原样；本地v10未部署，正式实例最近核验仍v8。
