@@ -251,7 +251,7 @@ def test_supported_time_forms_use_explicit_shanghai_semantics(body, deadline, op
         ("报名截止：2026年10月6日晚8点。", "invalid_time"),
         ("报名截止：2026年10月6日（中午12点）。", "invalid_time"),
         ("报名截止：2026-10-06T18:30。", "invalid_time"),
-        ("报名截止：2026年10月6日18:30:45。", "invalid_time"),
+        ("报名截止：2026年10月6日18:30:60。", "invalid_time"),
         ("报名截止：2026年10月6日18:30：45。", "invalid_time"),
         ("报名截止：2026年10月6日18:30.123。", "invalid_time"),
         ("报名截止：2026年10月6日18:30-20:00。", "invalid_time"),

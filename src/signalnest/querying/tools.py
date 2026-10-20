@@ -377,6 +377,9 @@ class QueryTools:
                 if preview
                 else [c.model_dump(mode="json") for c in facts.constraints[:6]],
                 "deadline_at": facts.deadline_at.isoformat() if facts.deadline_at else None,
+                "scoped_deadlines": [
+                    item.model_dump(mode="json") for item in facts.scoped_deadlines
+                ],
                 "deadline_lower_at": facts.deadline_lower_at.isoformat()
                 if facts.deadline_lower_at
                 else None,

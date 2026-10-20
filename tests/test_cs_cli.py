@@ -57,7 +57,7 @@ def test_real_cs_preview_and_profile_check_preserve_explicit_unknowns(capsys):
     assert any(
         item["code"] == "recruitment_year_conflict" for item in result["decision"]["unknowns"]
     )
-    assert result["decision"]["rules_version"] == "notification-rules-v8"
+    assert result["decision"]["rules_version"] == "notification-rules-v10"
 
 
 @pytest.mark.parametrize("parser", [None, "whu-student-notices", "ems-notices"])

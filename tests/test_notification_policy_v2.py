@@ -345,9 +345,9 @@ def test_persisted_v1_profile_facts_and_decision_keep_their_original_snapshots_a
         canonical_sha256(stored["manifest"]) == stored["manifest_sha256"] == decision.policy_sha256
     )
     assert policy_manifest(profile)["versions"] == {
-        "facts_extractor": "whu-notice-facts-v8",
-        "rules": "notification-rules-v8",
-        "decision_engine": "notification-decision-v8",
+        "facts_extractor": "whu-notice-facts-v10",
+        "rules": "notification-rules-v10",
+        "decision_engine": "notification-decision-v10",
         "routing": "notification-routing-v1",
     }
     assert canonical_sha256(policy_manifest(profile)) != stored["manifest_sha256"]

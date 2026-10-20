@@ -137,7 +137,7 @@ def test_storage_init_cli_repeated(tmp_path):
     for _ in range(2):
         result = run_cli(tmp_path.parent, "storage-init", "--config", str(config))
         assert result.returncode == 0, result.stderr
-        assert "revision=0008_list_references" in result.stdout
+        assert "revision=0009_opportunity_review" in result.stdout
     assert (tmp_path / "data/signalnest.sqlite3").is_file()
     assert (tmp_path / "data/raw").is_dir()
 

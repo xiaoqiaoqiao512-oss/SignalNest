@@ -259,7 +259,12 @@ def _mail_members(connection, row, records):
             policy_record = records["notification_policy_revisions"][decision["policy_revision_id"]]
         except (KeyError, ValidationError, TypeError, ValueError) as exc:
             raise BackupVerificationError("backup_mail_evidence") from exc
-        _numbers(event, ("id", "document_id", "version_id", "event_seq"), code, minimum=1)
+        _numbers(event, ("id", "document_id", "version_id"), code, minimum=1)
+        _numbers(
+            event, ("event_seq",), code, minimum=0 if event["kind"] == "opportunity_review" else 1
+        )
+        if event["kind"] == "opportunity_review" and event["event_seq"] != 0:
+            raise BackupVerificationError(code)
         _numbers(event, ("occurred_at",), code)
         _numbers(decision, ("id", "event_id", "policy_revision_id"), code, minimum=1)
         _numbers(decision, ("evaluated_at",), code)

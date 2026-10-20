@@ -82,8 +82,8 @@ def legacy(tmp_path):
 
 def test_upgrade_preserves_old_data_without_inventing_cache_qualification(legacy):
     settings, engine, blob, response, version = legacy
-    assert initialize_storage(settings) == "0008_list_references"
-    assert initialize_storage(settings) == "0008_list_references"
+    assert initialize_storage(settings) == "0009_opportunity_review"
+    assert initialize_storage(settings) == "0009_opportunity_review"
     with engine.connect() as connection:
         doc = connection.execute(sa.select(documents)).mappings().one()
         raw = connection.execute(sa.select(raw_responses)).mappings().one()
@@ -141,4 +141,4 @@ def test_upgrade_interruption_rolls_back_columns_tables_and_keeps_0002(legacy):
         )
         assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     assert (settings.data_dir / blob.path).is_file()
-    assert initialize_storage(settings) == "0008_list_references"
+    assert initialize_storage(settings) == "0009_opportunity_review"

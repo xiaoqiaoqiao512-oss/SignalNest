@@ -9,6 +9,8 @@ from datetime import datetime, time, timedelta
 from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
+from bs4 import BeautifulSoup
+
 from signalnest.contracts import NoticeContent
 from signalnest.notifications.contracts import (
     FACTS_EXTRACTOR_VERSION,
@@ -16,6 +18,7 @@ from signalnest.notifications.contracts import (
     Evidence,
     NoticeFacts,
     QualificationConstraint,
+    ScopedDeadline,
     TopicMatch,
     UnknownItem,
 )
@@ -37,11 +40,13 @@ SHANGHAI = ZoneInfo("Asia/Shanghai")
 _DATE = re.compile(
     r"(?<!\d)(?P<year>20\d{2})(?:年|[-/])\s*(?P<month>\d{1,2})(?:月|[-/])"
     r"\s*(?P<day>\d{1,2})(?!\d)(?:日)?"
-    r"(?:\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{2})(?!\d))?"
+    r"(?:\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{2})(?!\d)"
+    r"(?::(?P<second>\d{2})(?!\d))?)?"
 )
 _TIMELESS_DATE = re.compile(
     r"(?<![\d年/-])(?P<month>\d{1,2})月\s*(?P<day>\d{1,2})日"
-    r"(?:\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{2})(?!\d))?"
+    r"(?:\s*(?P<hour>\d{1,2})[:：](?P<minute>\d{2})(?!\d)"
+    r"(?::(?P<second>\d{2})(?!\d))?)?"
 )
 _UNSUPPORTED_TIMEZONE = re.compile(
     r"\b(?:UTC|GMT|EST|EDT|PST|PDT|CST|CDT|MST|MDT|CET|CEST)\b"
@@ -62,7 +67,8 @@ _LOCAL_TIMEZONES = ("北京时间", "上海时间", "中国标准时间")
 _BRACKETED_TIMEZONE = re.compile(r"[（(]\s*([\u4e00-\u9fff]{2,16}(?:时间|时区))\s*[)）]")
 _SUFFIX_TIMEZONE = re.compile(r"\s*([\u4e00-\u9fff]{2,16}(?:时间|时区))")
 _DEADLINE = re.compile(
-    r"(?:报名|申请|申报|选课)?(?:截止(?:时间|日期)?(?!后)|最迟)|(?:报名|申请|申报|选课)时间"
+    r"(?:报名|申请|申报|选课)?(?:(?:截止|截至)(?:时间|日期)?(?!后)|最迟)"
+    r"|(?:报名|申请|申报|选课)时间"
 )
 _PERIOD = re.compile(r"(?:报名|申请|申报|选课)(?:时间|期间)")
 _AUDIENCE = re.compile(
@@ -70,8 +76,19 @@ _AUDIENCE = re.compile(
     r"报名条件\s*[:：\n]\s*(?:\d+[.．]\s*)?)(?P<value>[^。；;\n]+)"
 )
 _CAN_PARTICIPATE = re.compile(
-    r"(?:武汉大学)?(?:20\d{2}级)?(?:全日制)?(?:在校)?(?:本科生|研究生)"
+    r"(?:武汉大学|我校|全校)?(?:20\d{2}级)?(?:全日制)?(?:在校)?"
+    r"(?:专科生|本科生|硕士研究生|博士研究生|研究生|在华留学生)"
+    r"(?:[、和及](?:专科生|本科生|硕士研究生|博士研究生|研究生|在华留学生))*"
     r"(?:均可|可|可以)(?:报名|申请|参加)"
+)
+_TIME_HEADING = re.compile(
+    r"(?:[（(]?\d+[.．、)）]\s*)?(?:报名|申请|申报|选课)"
+    r"(?:(?:截止|截至)(?:时间|日期)?|时间|日期|期间)\s*[:：]?\s*$"
+)
+_TABLE_APPLICATION_LABEL = re.compile(r"(?:报名|申请|申报)(?:及(?:作品|材料)提交)?$")
+_SCOPED_EXTENSION = re.compile(
+    r"(?:注[:：]\s*)?(?P<groups>研究生组(?:[和及、]在华留学生组)?)"
+    r"[，,]\s*学生参赛报名截止日期可延到(?P<date>[^。；;\n]+)$"
 )
 _UNSUPPORTED_QUALIFICATIONS = (
     ("gpa", re.compile(r"GPA|绩点|平均成绩", re.IGNORECASE)),
@@ -116,6 +133,25 @@ _CRITICAL_MEDIA = re.compile(
 )
 _RESULTS = re.compile(r"结题|验收结果|评审结果|获奖名单|录取名单|结果公示|公布.*结果")
 _FACULTY_APPLICANT = re.compile(r"现面向(?:全校|我校|武汉大学)教师征集[^。；;\n]{0,24}选题")
+_COMPLETED_FACULTY_COLLECTION = re.compile(
+    r"面向(?:全校|我校|武汉大学)教师\s*(?:共|累计)?征集了"
+    r"|已完成面向(?:全校|我校|武汉大学)教师的(?:选题|课题)征集"
+)
+_HISTORICAL_APPLICANT_PREFIX = re.compile(r"去年|往年|此前|曾经|曾于|历史|上(?:一)?轮|当时")
+_CURRENT_APPLICANT_PREFIX = re.compile(r"(?:现(?:已)?|本次|本轮|即日起)\s*$")
+_APPLICANT_PHASE_RESET = re.compile(r"(?:^|[，,])\s*(?:现(?:已)?|本次|本轮|即日起)")
+_LATER_APPLICANT_PREFIX = re.compile(r"选题发布后|汇总选题后|确定指导关系后|下一阶段|下一轮|今后")
+_BENEFICIARY_AUDIENCE = re.compile(r"本科生的[、，,\s]*在(?:指导教师|教师|导师)指导下")
+_PROJECT_APPLICANT = re.compile(
+    r"项目负责人(?:必须|须|应当|应)(?:为|是)(?P<value>本科生[^，,。；;\n]*)"
+)
+_PROJECT_CONDITIONS = (
+    re.compile(r"毕业年级学生不能作为项目负责人申报"),
+    re.compile(r"(?:项目的团队成员|项目团队成员)[^。；;\n]{0,70}不超过\d+人"),
+    re.compile(r"每位学生只能参与一个[^。；;\n]+"),
+    re.compile(r"指导教师(?:应|须|必须)具有[^。；;\n]+"),
+    re.compile(r"团队(?:成员)?(?:可以|可|允许)有研究生参与"),
+)
 _TEAM_SUBMISSION = re.compile(r"项目团队(?:完成|须|需)[^。；;\n]{0,24}(?:提交|材料)")
 _ADMIN_TIME = re.compile(
     r"(?:指导教师|各项目单位|各学院)[^。；;\n]{0,32}(?:审核|评审|汇总|提交|发送)"
@@ -154,6 +190,12 @@ _PRESENT_ENTRY = re.compile(
     r"(?:即日起(?:\s*接受)?|现(?:已)?(?:启动|开放|接受|开始|开展)|正在接受)\s*"
     r"(?P<action>报名|申请|申报|征集|招募|招生|招收|选拔|选派|选课)"
 )
+_COMPETITION_CURRENT = re.compile(
+    r"组织活动已经开始|选拔优秀团队参加[^。；;\n]{1,90}(?:大赛|竞赛)[，,]"
+    r"现将有关事项通知如下"
+)
+_COMPETITION_SCHEDULE = re.compile(r"报名及(?:比赛安排|作品提交)|报名截止时间")
+_COMPETITION_DEFERRED = re.compile(r"报名(?:尚未|暂未|暂不|将另行)|暂不接受报名|报名时间另行通知")
 _ENTRY_RECORD = re.compile(r"查看|查询|已有|历史记录|报名记录|(?:报名|申请)情况")
 _MENU_PATH = re.compile(r"菜单|点击|[→>]|报名申请\s*[-→>]")
 _UNBOUND_SUBJECT = re.compile(r"(?:相关|有关)(?:安排|事宜|事项)|(?:安排|事项)(?:如下|见下文)")
@@ -225,22 +267,23 @@ def _date_value(
         return None
     month, day = (int(match[name]) for name in ("month", "day"))
     hour, minute = match["hour"], match["minute"]
+    second = match.groupdict().get("second")
     suffix = match.string[match.end() :]
     if _UNSUPPORTED_TIME_SUFFIX.match(suffix):
-        # Never truncate seconds, a clock-only range, fractional time or an explicit offset.
+        # Never truncate an unsupported suffix, clock range, fraction or explicit offset.
         return None
     if hour is None:
         if _UNSUPPORTED_DATE_CLOCK.match(suffix):
             return None
         clock = time(23, 59, 59) if deadline else time.min
     else:
-        if int(hour) == 24 and int(minute) == 0:
+        if int(hour) == 24 and int(minute) == 0 and int(second or 0) == 0:
             try:
                 return datetime(year, month, day, tzinfo=SHANGHAI) + timedelta(days=1)
             except ValueError:
                 return None
         try:
-            clock = time(int(hour), int(minute))
+            clock = time(int(hour), int(minute), int(second or 0))
         except ValueError:
             return None
     try:
@@ -298,6 +341,9 @@ def rule_manifest() -> dict:
                 "same topic binding and menu/record/history/administration exclusions"
             ),
             "present_entry_pattern": _PRESENT_ENTRY.pattern,
+            "current_competition_call": _COMPETITION_CURRENT.pattern,
+            "current_competition_schedule": _COMPETITION_SCHEDULE.pattern,
+            "deferred_competition_entry": _COMPETITION_DEFERRED.pattern,
             "record_pattern": _ENTRY_RECORD.pattern,
             "menu_path_pattern": _MENU_PATH.pattern,
             "unbound_subject_pattern": _UNBOUND_SUBJECT.pattern,
@@ -332,7 +378,10 @@ def rule_manifest() -> dict:
         "unsupported_qualification_patterns": {
             field: pattern.pattern for field, pattern in _UNSUPPORTED_QUALIFICATIONS
         },
-        "boolean_logic": "explicit AND only; OR and conflicting constraints remain unknown",
+        "boolean_logic": (
+            "explicit AND; "
+            "full coordinated 均可 applicant list is inclusive; unsupported OR/conflict unknown"
+        ),
         "qualification_sections": {
             "heading_pattern": _QUALIFICATION_SECTION.pattern,
             "next_section_pattern": _NEXT_SECTION.pattern,
@@ -357,7 +406,20 @@ def rule_manifest() -> dict:
             "bracketed_timezone_pattern": _BRACKETED_TIMEZONE.pattern,
             "suffix_timezone_pattern": _SUFFIX_TIMEZONE.pattern,
             "year_inheritance": "only YYYY date 至/到 M月D日 in one explicit application interval",
-            "midnight": "24:00 exactly means next calendar day 00:00",
+            "seconds": "optional ASCII :SS; 00..59; no truncated suffix, fraction or offset",
+            "midnight": "24:00 or 24:00:00 exactly means next calendar day 00:00",
+            "standalone_heading": _TIME_HEADING.pattern,
+            "heading_scope": (
+                "bare heading plus immediately adjacent date only; no global date borrowing"
+            ),
+            "application_table_row": _TABLE_APPLICATION_LABEL.pattern,
+            "table_backend": (
+                "html.parser; same-row first two cells; unique exact body-text mapping"
+            ),
+            "scoped_extension": _SCOPED_EXTENSION.pattern,
+            "scope_selection": (
+                "preserve witnessed applicant branches; no global earliest/latest deadline"
+            ),
             "before_date": "日前 retains [day start, day end] boundary and imprecise_deadline",
             "team_submission_pattern": _TEAM_SUBMISSION.pattern,
             "administrative_deadline_pattern": _ADMIN_TIME.pattern,
@@ -378,6 +440,28 @@ def rule_manifest() -> dict:
             ),
         },
         "faculty_applicant_pattern": _FACULTY_APPLICANT.pattern,
+        "applicant_scope": {
+            "completed_faculty_collection": _COMPLETED_FACULTY_COLLECTION.pattern,
+            "historical_clause_prefix": _HISTORICAL_APPLICANT_PREFIX.pattern,
+            "current_applicant_prefix": _CURRENT_APPLICANT_PREFIX.pattern,
+            "current_phase_reset": _APPLICANT_PHASE_RESET.pattern,
+            "later_phase_prefix": _LATER_APPLICANT_PREFIX.pattern,
+            "beneficiary_description": _BENEFICIARY_AUDIENCE.pattern,
+            "student_project_applicant": _PROJECT_APPLICANT.pattern,
+            "unverified_project_conditions": [p.pattern for p in _PROJECT_CONDITIONS],
+            "teacher_role": (
+                "only the current faculty topic-solicitation declaration; teacher words "
+                "elsewhere never become an applicant study level"
+            ),
+            "scope": (
+                "each declaration separately; completed collection and beneficiary/mentor "
+                "descriptions retain evidence without hard applicant constraints"
+            ),
+            "conflict": (
+                "unresolved current faculty solicitation and explicit current student "
+                "application make their applicant constraints unsupported"
+            ),
+        },
         "teaching_assistant": {
             "recruitment_pair": _TA_PAIR.pattern,
             "reference_title": _TA_REFERENCE_TITLE.pattern,
@@ -748,37 +832,104 @@ def _link_document_actions(content, topics):
     return linked, (unknown,)
 
 
+def _noncurrent_applicant_stage(text, start, end):
+    """Only witnessed local markers; a new current clause can reset past context."""
+    left, _ = _clause_bounds(text, start, end)
+    prefix = text[left:start]
+    markers = [
+        (match.end(), stage)
+        for pattern, stage in (
+            (_HISTORICAL_APPLICANT_PREFIX, "historical"),
+            (_LATER_APPLICANT_PREFIX, "later"),
+            (_APPLICANT_PHASE_RESET, None),
+        )
+        for match in pattern.finditer(prefix)
+    ]
+    return max(markers, key=lambda item: item[0])[1] if markers else None
+
+
 def _qualifications(content):
     constraints, unknowns = [], []
+    current_student_proofs = []
     audience_declared = False
     incomplete = False
     for field, text in _source_fields(content):
-        faculty_applicant = _FACULTY_APPLICANT.search(text)
+        faculty_applicants = tuple(
+            match
+            for match in _FACULTY_APPLICANT.finditer(text)
+            if _noncurrent_applicant_stage(text, match.start() + 1, match.end()) is None
+        )
         audience_matches = sorted(
-            (*_AUDIENCE.finditer(text), *_CAN_PARTICIPATE.finditer(text)),
+            (
+                *_AUDIENCE.finditer(text),
+                *_CAN_PARTICIPATE.finditer(text),
+                *_PROJECT_APPLICANT.finditer(text),
+            ),
             key=lambda match: match.start(),
         )
         for match in audience_matches:
-            # This witnessed template explicitly solicits topics from teachers.
-            # Its descriptions of the eventual student beneficiaries are not a
-            # competing declaration about who submits the current application.
-            if faculty_applicant is not None and not (
-                match.start() <= faculty_applicant.start() + 1 < match.end()
-                or faculty_applicant.start() <= match.start() < faculty_applicant.end()
-            ):
-                continue
             clause = match.groupdict().get("value") or match.group()
             evidence = _evidence(field, text, match.start(), match.end())
+            left, _ = _clause_bounds(text, match.start(), match.end())
+            prefix = text[left : match.start()]
+            scope_end = match.end()
+            # Only bridge a wrapped, otherwise bare teacher subject into this
+            # witnessed completed-collection expression, not arbitrary paragraphs.
+            if clause.strip() in {"全校教师", "我校教师", "武汉大学教师"}:
+                continuation = re.match(r"\s+(?:共|累计)?征集了[^。；;\n]+", text[scope_end:])
+                if continuation is not None:
+                    scope_end += continuation.end()
+            scoped_text = text[left:scope_end]
+            stage = _noncurrent_applicant_stage(text, match.start(), match.end())
+            completed = "教师" in clause and _COMPLETED_FACULTY_COLLECTION.search(scoped_text)
+            if stage is not None or completed:
+                incomplete = True
+                unknowns.append(
+                    _unknown(
+                        "later_audience" if stage == "later" else "historical_audience",
+                        "audience",
+                        "历史或后续阶段的对象不作为本次申请资格；保留原句供核对。",
+                        _evidence(field, text, left, scope_end),
+                    )
+                )
+                continue
+            if _BENEFICIARY_AUDIENCE.match(clause):
+                incomplete = True
+                unknowns.append(
+                    _unknown(
+                        "beneficiary_audience",
+                        "audience",
+                        "项目受益学生和导师指导描述不等于当前申请主体。",
+                        evidence,
+                    )
+                )
+                continue
+            faculty_applicant = next(
+                (
+                    applicant
+                    for applicant in faculty_applicants
+                    if match.start() < applicant.end() and applicant.start() < match.end()
+                ),
+                None,
+            )
             audience_declared = True
             negated = re.search(
                 r"不|非", text[max(0, match.start() - 3) : match.start()]
             ) or re.search(r"非(?:本科生|研究生|教师)|不包括|并非", clause)
             soft = re.search(
                 r"原则上|优先|通常|一般", text[max(0, match.start() - 3) : match.end()]
-            ) is not None and any(
-                item.context == "opportunity" for item in _teaching_assistant_topics(content)
+            ) is not None and (
+                match.re is _PROJECT_APPLICANT
+                or any(
+                    item.context == "opportunity" for item in _teaching_assistant_topics(content)
+                )
             )
-            ambiguous = _OR.search(clause) is not None or negated is not None or soft
+            # A witnessed coordinated list followed by 均可 is one inclusive
+            # applicant set. Never run OR detection on only the final suffix.
+            coordinated = match.re is _CAN_PARTICIPATE and "或" not in clause
+            ambiguous = (
+                (not coordinated and _OR.search(clause) is not None) or negated is not None or soft
+            )
             if ambiguous:
                 incomplete = True
                 unknowns.append(
@@ -805,12 +956,29 @@ def _qualifications(content):
                 levels.append("doctoral")
             if "研究生" in clause and not any(word in clause for word in ("硕士", "博士")):
                 levels.extend(("master", "doctoral"))
-            if "教师" in clause and faculty_applicant is not None:
+            if faculty_applicant:
                 extracted.append(("role", ("faculty",)))
-            elif "教师" in clause:
-                levels.append("faculty")
+            # A teacher mentioned as mentor, past contributor or future party
+            # cannot supply a hard applicant role or study-level requirement.
+            elif "教师" in clause and not levels:
+                incomplete = True
+                unknowns.append(
+                    _unknown(
+                        "applicant_scope_unknown",
+                        "eligibility",
+                        "教师称谓与本次申请人的关系未可靠识别，不据此排除。",
+                        evidence,
+                    )
+                )
             if levels:
                 extracted.append(("study_level", tuple(levels)))
+                if "undergraduate" in levels and (
+                    match.re is _PROJECT_APPLICANT
+                    or match.re is _CAN_PARTICIPATE
+                    or match.group().startswith(("报名对象", "申请对象", "申报对象", "选课对象"))
+                    or (_CURRENT_APPLICANT_PREFIX.search(prefix) and _ENTRY_ACTION.search(clause))
+                ):
+                    current_student_proofs.append(evidence)
             years = tuple(int(value) for value in re.findall(r"(20\d{2})级", clause))
             if years:
                 extracted.append(("entry_year", years))
@@ -852,12 +1020,17 @@ def _qualifications(content):
                     )
                 )
             for constraint_field, values in extracted:
+                proof = (
+                    _evidence(field, text, *faculty_applicant.span())
+                    if constraint_field == "role" and faculty_applicant is not None
+                    else evidence
+                )
                 constraints.append(
                     QualificationConstraint(
                         field=constraint_field,
                         values=values,
                         operator="unsupported" if ambiguous else "one_of",
-                        evidence=evidence,
+                        evidence=proof,
                     )
                 )
             # Completeness is restricted to fully consumed small audience expressions.
@@ -872,7 +1045,7 @@ def _qualifications(content):
                         residue = residue.replace(f"{value}级", "")
             residue = re.sub(
                 r"武汉大学|全校|我校|全体|本科生|硕士研究生|博士研究生|研究生|教师|"
-                r"专业为|专业[:：]|学生|均可|可以|报名|申请|参加|征集|可|且|为|的|[，,\s]",
+                r"专业为|专业[:：]|学生|均可|可以|报名|申请|参加|征集|可|且|为|的|[、和及，,\s]",
                 "",
                 residue,
             )
@@ -926,6 +1099,21 @@ def _qualifications(content):
                         constraint_field,
                         "正文有当前 Profile 无法核对的条件，不默认为符合。",
                         evidence,
+                    )
+                )
+        for pattern in _PROJECT_CONDITIONS:
+            for match in pattern.finditer(text):
+                incomplete = True
+                proof = _evidence(field, text, *match.span())
+                constraints.append(
+                    QualificationConstraint(field="other", operator="unsupported", evidence=proof)
+                )
+                unknowns.append(
+                    _unknown(
+                        "project_condition_unknown",
+                        "eligibility",
+                        "项目团队、毕业年级、参与限制或导师资格需另行核对，不默认为符合。",
+                        proof,
                     )
                 )
         # Unknown additional mandatory conditions cannot be erased by recognizing a student label.
@@ -1121,6 +1309,28 @@ def _qualifications(content):
                     _evidence("body_text", content.body_text, *match.span()),
                 )
             )
+    faculty_constraints = [
+        item for item in constraints if item.field == "role" and item.values == ("faculty",)
+    ]
+    if faculty_constraints and current_student_proofs:
+        incomplete = True
+        proofs = tuple(item.evidence for item in faculty_constraints) + tuple(
+            current_student_proofs
+        )
+        unknowns.append(
+            _unknown(
+                "conflicting_evidence",
+                "eligibility",
+                "同时存在当前教师征题和学生申报声明，未可靠分清各自范围。",
+                *proofs,
+            )
+        )
+        constraints = [
+            item.model_copy(update={"operator": "unsupported"})
+            if item in faculty_constraints or item.evidence in current_student_proofs
+            else item
+            for item in constraints
+        ]
     # Multiple declarations on one field can be contradictory, not just an AND mismatch.
     for constraint_field in sorted(
         {item.field for item in constraints if item.operator != "unsupported"}
@@ -1147,8 +1357,62 @@ def _qualifications(content):
     return tuple(constraints), audience_declared, audience_declared and not incomplete, unknowns
 
 
+def _table_application_time_spans(content):
+    """Bind only witnessed application/date cells in one HTML row to exact text."""
+    soup = BeautifulSoup(content.body_html, "html.parser")
+    spans = []
+    for row in soup.select("table tr"):
+        cells = row.find_all(("td", "th"), recursive=False)
+        if not 2 <= len(cells) <= 4:
+            continue
+        label, date_cell = (" ".join(cell.get_text().split()) for cell in cells[:2])
+        if not _TABLE_APPLICATION_LABEL.fullmatch(label) or not re.match(
+            r"(?:截止|截至)(?:时间|日期)?\s*[:：]?\s*", date_cell
+        ):
+            continue
+        cell_patterns = [
+            r"\s*".join(re.escape(part) for part in value.split()) for value in (label, date_cell)
+        ]
+        matches = tuple(re.finditer(r"\s+".join(cell_patterns), content.body_text))
+        if len(matches) == 1:
+            spans.append(matches[0].span())
+    return tuple(sorted(set(spans)))
+
+
+def _time_clauses(content):
+    """Keep source offsets; associate a bare heading only with its adjacent value."""
+    table_spans = _table_application_time_spans(content)
+    for field, text in _source_fields(content):
+        sentences = tuple(_sentences(text))
+        for index, (clause, start, end) in enumerate(sentences):
+            if field == "body_text":
+                containing = next(
+                    (span for span in table_spans if span[0] <= start < span[1]), None
+                )
+                if containing is not None:
+                    if start == containing[0]:
+                        yield field, text, text[containing[0] : containing[1]], *containing
+                    continue
+            if _TIME_HEADING.fullmatch(clause.strip()):
+                # A heading carries no date itself. Missing value stays unknown;
+                # it must not invalidate another complete applicant deadline.
+                continue
+            if index:
+                prior, prior_start, prior_end = sentences[index - 1]
+                if (
+                    _TIME_HEADING.fullmatch(prior.strip())
+                    and re.fullmatch(r"\s*", text[prior_end:start])
+                    and (_DATE.search(clause) or _TIMELESS_DATE.search(clause))
+                    and len(clause) <= 240
+                ):
+                    yield field, text, text[prior_start:end], prior_start, end
+                    continue
+            yield field, text, clause, start, end
+
+
 def _times(content, category):
     openings, deadlines, evidence, unknowns, lower_bounds = [], [], [], [], []
+    deadline_proofs, extensions = [], []
     assistant = any(item.context == "opportunity" for item in _teaching_assistant_topics(content))
     if assistant:
         for match in _TA_MONTH_DAY_SUBMISSION.finditer(content.body_text):
@@ -1177,174 +1441,183 @@ def _times(content, category):
                             *proofs,
                         )
                     )
-    for field, text in _source_fields(content):
-        for clause, start, end in _sentences(text):
-            if assistant and _TA_FORM_SUBMISSION.search(clause):
-                proof = _evidence(field, text, start, end)
-                evidence.append(proof)
-                clocks = list(_TA_CLOCK.finditer(clause))
-                if len(clocks) == 1:
-                    clock = clocks[0]
-                    try:
-                        deadline = datetime(
-                            *(int(clock[name]) for name in ("year", "month", "day", "hour")),
-                            tzinfo=SHANGHAI,
-                        )
-                        if clock["weekday"] is not None and "一二三四五六日"[
-                            deadline.weekday()
-                        ] != clock["weekday"].replace("天", "日"):
-                            raise ValueError("weekday mismatch")
-                    except ValueError:
-                        unknowns.append(
-                            _unknown("invalid_time", "time", "申请表提交日期无效。", proof)
-                        )
-                    else:
-                        deadlines.append(deadline)
-                else:
-                    unknowns.append(
-                        _unknown(
-                            "time_unrecognized",
-                            "time",
-                            "申请表提交时间不属于已验证的表达式。",
-                            proof,
-                        )
-                    )
-                continue
-            team_deadline = bool(
-                _TEAM_SUBMISSION.search(clause)
-                and any(
-                    re.match(r"\s*前", clause[match.end() :]) for match in _DATE.finditer(clause)
-                )
-            )
-            time_context = (
-                _DEADLINE.search(clause)
-                or team_deadline
-                or re.search(r"报名开始|开放报名|开始报名|即日起|自通知发布之日起", clause)
-            )
-            if not time_context:
-                continue
+    for field, text, clause, start, end in _time_clauses(content):
+        extension = _SCOPED_EXTENSION.fullmatch(clause.strip())
+        if extension is not None:
             proof = _evidence(field, text, start, end)
             evidence.append(proof)
-            if _ADMIN_TIME.search(clause) and not team_deadline:
-                # These are review/submission steps for teachers and units in
-                # the witnessed project template, not the applicant's deadline.
-                continue
-            if _LATER_ROUND_TIME.search(clause):
+            dates = tuple(_DATE.finditer(extension["date"]))
+            if len(dates) != 1 or _TIMELESS_DATE.search(extension["date"]):
                 unknowns.append(
-                    _unknown(
-                        "secondary_time_unknown",
-                        "time",
-                        "另行通知的第二轮报名不是已声明的首轮区间，仍保留未知。",
-                        proof,
-                    )
+                    _unknown("year_missing", "time", "分组延期缺少唯一完整年份日期。", proof)
                 )
-                continue
-            if _DEFERRED_DEADLINE.search(clause):
+            else:
+                value = _date_value(dates[0], deadline=True)
+                if value is None:
+                    unknowns.append(
+                        _unknown("invalid_time", "time", "分组延期日期或时刻无效。", proof)
+                    )
+                else:
+                    groups = (
+                        ("graduate", "international")
+                        if "在华留学生组" in extension["groups"]
+                        else ("graduate",)
+                    )
+                    extensions.extend((group, value, proof) for group in groups)
+            continue
+        prior_deadline_count = len(deadlines)
+        if assistant and _TA_FORM_SUBMISSION.search(clause):
+            proof = _evidence(field, text, start, end)
+            evidence.append(proof)
+            clocks = list(_TA_CLOCK.finditer(clause))
+            if len(clocks) == 1:
+                clock = clocks[0]
+                try:
+                    deadline = datetime(
+                        *(int(clock[name]) for name in ("year", "month", "day", "hour")),
+                        tzinfo=SHANGHAI,
+                    )
+                    if clock["weekday"] is not None and "一二三四五六日"[
+                        deadline.weekday()
+                    ] != clock["weekday"].replace("天", "日"):
+                        raise ValueError("weekday mismatch")
+                except ValueError:
+                    unknowns.append(_unknown("invalid_time", "time", "申请表提交日期无效。", proof))
+                else:
+                    deadlines.append(deadline)
+            else:
                 unknowns.append(
                     _unknown(
                         "time_unrecognized",
                         "time",
-                        "截止指向后续通知，不能把同句开始日期当截止。",
+                        "申请表提交时间不属于已验证的表达式。",
                         proof,
                     )
                 )
-                continue
-            dates = list(_DATE.finditer(clause))
-            timeless_dates = list(_TIMELESS_DATE.finditer(clause))
-            inherited_range = (
-                bool(_PERIOD.search(clause))
-                and len(dates) == 1
-                and len(timeless_dates) == 1
-                and dates[0].end() <= timeless_dates[0].start()
-                and re.fullmatch(
-                    r"\s*(?:至|到)\s*", clause[dates[0].end() : timeless_dates[0].start()]
+            continue
+        team_deadline = bool(
+            _TEAM_SUBMISSION.search(clause)
+            and any(re.match(r"\s*前", clause[match.end() :]) for match in _DATE.finditer(clause))
+        )
+        time_context = (
+            _DEADLINE.search(clause)
+            or team_deadline
+            or re.search(r"报名开始|开放报名|开始报名|即日起|自通知发布之日起", clause)
+        )
+        if not time_context:
+            continue
+        proof = _evidence(field, text, start, end)
+        evidence.append(proof)
+        if _ADMIN_TIME.search(clause) and not team_deadline:
+            # These are review/submission steps for teachers and units in
+            # the witnessed project template, not the applicant's deadline.
+            continue
+        if _LATER_ROUND_TIME.search(clause):
+            unknowns.append(
+                _unknown(
+                    "secondary_time_unknown",
+                    "time",
+                    "另行通知的第二轮报名不是已声明的首轮区间，仍保留未知。",
+                    proof,
                 )
-                is not None
             )
-            declared_zones = _BRACKETED_TIMEZONE.findall(clause)
-            declared_zones.extend(
-                zone[1]
-                for date in dates + timeless_dates
-                if (zone := _SUFFIX_TIMEZONE.match(clause[date.end() :])) is not None
+            continue
+        if _DEFERRED_DEADLINE.search(clause):
+            unknowns.append(
+                _unknown(
+                    "time_unrecognized",
+                    "time",
+                    "截止指向后续通知，不能把同句开始日期当截止。",
+                    proof,
+                )
             )
-            if _UNSUPPORTED_TIMEZONE.search(clause) or any(
-                zone not in _LOCAL_TIMEZONES for zone in declared_zones
+            continue
+        dates = list(_DATE.finditer(clause))
+        timeless_dates = list(_TIMELESS_DATE.finditer(clause))
+        inherited_range = (
+            bool(_PERIOD.search(clause))
+            and len(dates) == 1
+            and len(timeless_dates) == 1
+            and dates[0].end() <= timeless_dates[0].start()
+            and re.fullmatch(r"\s*(?:至|到)\s*", clause[dates[0].end() : timeless_dates[0].start()])
+            is not None
+        )
+        declared_zones = _BRACKETED_TIMEZONE.findall(clause)
+        declared_zones.extend(
+            zone[1]
+            for date in dates + timeless_dates
+            if (zone := _SUFFIX_TIMEZONE.match(clause[date.end() :])) is not None
+        )
+        if _UNSUPPORTED_TIMEZONE.search(clause) or any(
+            zone not in _LOCAL_TIMEZONES for zone in declared_zones
+        ):
+            unknowns.append(
+                _unknown("unsupported_timezone", "time", "时间不属于支持的上海时间表达式。", proof)
+            )
+            continue
+        if timeless_dates and not inherited_range:
+            unknowns.append(
+                _unknown("year_missing", "time", "月日缺少年份，不从发布日期推测。", proof)
+            )
+            continue
+        relative_start = re.search(r"自通知发布之日起|即日起|现(?:开始|开放)报名", clause)
+        if relative_start:
+            openings.append(datetime.combine(content.published_date, time.min, SHANGHAI))
+        if inherited_range:
+            opens = _date_value(dates[0], deadline=False)
+            deadline = _date_value(
+                timeless_dates[0], deadline=True, inherited_year=int(dates[0]["year"])
+            )
+            if opens is not None and deadline is not None and opens <= deadline:
+                openings.append(opens)
+                deadlines.append(deadline)
+            else:
+                unknowns.append(_unknown("invalid_time", "time", "报名区间日期或顺序无效。", proof))
+        elif _PERIOD.search(clause) and len(dates) == 2:
+            opens = _date_value(dates[0], deadline=False)
+            deadline = _date_value(dates[1], deadline=True)
+            if opens is not None and deadline is not None and opens <= deadline:
+                openings.append(opens)
+                deadlines.append(deadline)
+            else:
+                unknowns.append(_unknown("invalid_time", "time", "报名区间日期或顺序无效。", proof))
+        elif len(dates) == 1:
+            opening_only = re.search(
+                r"报名开始|开放报名|开始报名", clause
+            ) and not _DEADLINE.search(clause)
+            value = _date_value(dates[0], deadline=not opening_only)
+            if value is None:
+                unknowns.append(_unknown("invalid_time", "time", "日期或时刻无效。", proof))
+            elif opening_only:
+                openings.append(value)
+            elif (_DEADLINE.search(clause) or relative_start or team_deadline) and (
+                not _PERIOD.search(clause) or re.search(r"至|前|截止", clause)
             ):
-                unknowns.append(
-                    _unknown(
-                        "unsupported_timezone", "time", "时间不属于支持的上海时间表达式。", proof
-                    )
-                )
-                continue
-            if timeless_dates and not inherited_range:
-                unknowns.append(
-                    _unknown("year_missing", "time", "月日缺少年份，不从发布日期推测。", proof)
-                )
-                continue
-            relative_start = re.search(r"自通知发布之日起|即日起|现(?:开始|开放)报名", clause)
-            if relative_start:
-                openings.append(datetime.combine(content.published_date, time.min, SHANGHAI))
-            if inherited_range:
-                opens = _date_value(dates[0], deadline=False)
-                deadline = _date_value(
-                    timeless_dates[0], deadline=True, inherited_year=int(dates[0]["year"])
-                )
-                if opens is not None and deadline is not None and opens <= deadline:
-                    openings.append(opens)
-                    deadlines.append(deadline)
-                else:
-                    unknowns.append(
-                        _unknown("invalid_time", "time", "报名区间日期或顺序无效。", proof)
-                    )
-            elif _PERIOD.search(clause) and len(dates) == 2:
-                opens = _date_value(dates[0], deadline=False)
-                deadline = _date_value(dates[1], deadline=True)
-                if opens is not None and deadline is not None and opens <= deadline:
-                    openings.append(opens)
-                    deadlines.append(deadline)
-                else:
-                    unknowns.append(
-                        _unknown("invalid_time", "time", "报名区间日期或顺序无效。", proof)
-                    )
-            elif len(dates) == 1:
-                opening_only = re.search(
-                    r"报名开始|开放报名|开始报名", clause
-                ) and not _DEADLINE.search(clause)
-                value = _date_value(dates[0], deadline=not opening_only)
-                if value is None:
-                    unknowns.append(_unknown("invalid_time", "time", "日期或时刻无效。", proof))
-                elif opening_only:
-                    openings.append(value)
-                elif (_DEADLINE.search(clause) or relative_start or team_deadline) and (
-                    not _PERIOD.search(clause) or re.search(r"至|前|截止", clause)
-                ):
-                    deadlines.append(value)
-                    if dates[0]["hour"] is None and re.match(r"\s*前", clause[dates[0].end() :]):
-                        lower_bounds.append(datetime.combine(value.date(), time.min, SHANGHAI))
-                        unknowns.append(
-                            _unknown(
-                                "imprecise_deadline",
-                                "deadline",
-                                "“日前”未声明精确时刻；保留当日日初至日末边界，请提前核对。",
-                                proof,
-                            )
-                        )
-                else:
+                deadlines.append(value)
+                if dates[0]["hour"] is None and re.match(r"\s*前", clause[dates[0].end() :]):
+                    lower_bounds.append(datetime.combine(value.date(), time.min, SHANGHAI))
                     unknowns.append(
                         _unknown(
-                            "ambiguous_time", "time", "日期用途不明确，不能猜测截止时间。", proof
+                            "imprecise_deadline",
+                            "deadline",
+                            "“日前”未声明精确时刻；保留当日日初至日末边界，请提前核对。",
+                            proof,
                         )
                     )
-            elif len(dates) > 2:
+            else:
                 unknowns.append(
-                    _unknown(
-                        "ambiguous_time", "time", "同句有多个日期，首版不猜测报名区间。", proof
-                    )
+                    _unknown("ambiguous_time", "time", "日期用途不明确，不能猜测截止时间。", proof)
                 )
-            elif not relative_start:
-                unknowns.append(
-                    _unknown("time_unrecognized", "time", "时间声明没有支持的完整年份日期。", proof)
-                )
+        elif len(dates) > 2:
+            unknowns.append(
+                _unknown("ambiguous_time", "time", "同句有多个日期，首版不猜测报名区间。", proof)
+            )
+        elif not relative_start:
+            unknowns.append(
+                _unknown("time_unrecognized", "time", "时间声明没有支持的完整年份日期。", proof)
+            )
+        if len(deadlines) > prior_deadline_count:
+            deadline_proofs.append(proof)
     opens_at = next(iter(set(openings))) if len(set(openings)) == 1 else None
     deadline_at = next(iter(set(deadlines))) if len(set(deadlines)) == 1 else None
     if len(set(openings)) > 1 or len(set(deadlines)) > 1:
@@ -1385,7 +1658,54 @@ def _times(content, category):
     lower = next(iter(set(lower_bounds))) if len(set(lower_bounds)) == 1 else None
     if deadline_at is None:
         lower = None
-    return opens_at, deadline_at, lower, tuple(evidence), unknowns
+    scoped = ()
+    if extensions and deadline_at is not None:
+        # Explicit general registration followed by named graduate/international
+        # extension. Preserve each branch, never choose a global min or max.
+        audience = next(
+            (
+                match
+                for match in _CAN_PARTICIPATE.finditer(content.body_text)
+                if "本科生" in match.group() and "研究生" in match.group()
+            ),
+            None,
+        )
+        if audience is not None and len({value for _, value, _ in extensions}) == 1:
+            audience_proof = _evidence("body_text", content.body_text, *audience.span())
+            scoped = (
+                ScopedDeadline(
+                    applicant_group="undergraduate",
+                    deadline_at=deadline_at,
+                    deadline_lower_at=lower,
+                    evidence=tuple(deadline_proofs) + (audience_proof,),
+                ),
+            ) + tuple(
+                ScopedDeadline(
+                    applicant_group=group,
+                    deadline_at=value,
+                    evidence=(proof,),
+                )
+                for group, value, proof in extensions
+            )
+        else:
+            unknowns.append(
+                _unknown(
+                    "deadline_scope_unknown",
+                    "time",
+                    "分组截止与完整报名对象或基础期限的关系未可靠确定。",
+                    *evidence,
+                )
+            )
+        deadline_at, lower = None, None
+        unknowns.append(
+            _unknown(
+                "scoped_deadline",
+                "time",
+                "截止按报名组别区分，不能选全篇最早或最晚日期；国际生身份仍需核对。",
+                *(proof for _, _, proof in extensions),
+            )
+        )
+    return opens_at, deadline_at, lower, tuple(evidence), unknowns, scoped
 
 
 def extract_facts(content: NoticeContent) -> NoticeFacts:
@@ -1431,12 +1751,33 @@ def extract_facts(content: NoticeContent) -> NoticeFacts:
         opportunities = ()
     constraints, audience, complete, unknowns = _qualifications(content)
     unknowns.extend(link_unknowns)
-    opens_at, deadline_at, deadline_lower_at, time_evidence, time_unknowns = _times(
-        content, category
+    opens_at, deadline_at, deadline_lower_at, time_evidence, time_unknowns, scoped_deadlines = (
+        _times(content, category)
     )
     current_application = _CURRENT_APPLICATION.search(content.body_text)
     if current_application is None:
         current_application = _linked_application_directive(content, topics)
+    if (
+        current_application is None
+        and category == "opportunity"
+        and deadline_at is not None
+        and any(item.topic == "competition" and item.context == "opportunity" for item in topics)
+        and _COMPETITION_SCHEDULE.search(content.body_text)
+        and not _COMPETITION_DEFERRED.search(content.body_text)
+        and not _RESULTS.search(content.title)
+    ):
+        # Two witnessed current-call templates plus their explicit application
+        # schedule. A deadline, a recent date or a competition title alone is
+        # insufficient; do not invent an exact start timestamp.
+        current_application = _COMPETITION_CURRENT.search(content.body_text)
+        if (
+            current_application is not None
+            and _noncurrent_applicant_stage(
+                content.body_text, current_application.start(), current_application.end()
+            )
+            is not None
+        ):
+            current_application = None
     if current_application is None and any(
         item.topic == "teaching_assistant" and item.context == "opportunity" for item in topics
     ):
@@ -1527,6 +1868,7 @@ def extract_facts(content: NoticeContent) -> NoticeFacts:
         opens_at=opens_at,
         deadline_at=deadline_at,
         deadline_lower_at=deadline_lower_at,
+        scoped_deadlines=scoped_deadlines,
         opening_confirmed=opens_at is not None or current_application is not None,
         time_evidence=time_evidence,
         information_incomplete=incomplete,

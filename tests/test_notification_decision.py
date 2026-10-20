@@ -435,7 +435,7 @@ def test_identical_inputs_and_clock_produce_identical_complete_audit():
         "decision.deadline_soon",
         "route.hybrid_immediate",
     )
-    assert first.decision_engine_version == "notification-decision-v8"
+    assert first.decision_engine_version == "notification-decision-v10"
 
 
 def test_audit_input_changes_with_profile_context_or_explicit_time():

@@ -37,6 +37,7 @@ def historical_snapshot(database):
             and name not in NEW_TABLES
             and name != "search_documents"
             and name != "discovered_references"
+            and name != "notification_opportunity_review_operations"
             and not name.startswith("search_fts")
         )
         result = {}
@@ -137,7 +138,7 @@ def test_populated_0005_upgrade_and_failures_preserve_all_evidence(
                 assert not NEW_COLUMNS.intersection(columns)
                 assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
 
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
         assert historical_snapshot(settings.database) == original
         with engine.connect() as connection:
             deliveries = connection.execute(sa.select(mail_delivery)).mappings().all()
@@ -152,7 +153,7 @@ def test_populated_0005_upgrade_and_failures_preserve_all_evidence(
             assert connection.execute(sa.select(notification_operations)).all() == []
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
         before = settings.database.read_bytes()
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
         assert settings.database.read_bytes() == before
         assert {
             path.name: path.read_bytes() for path in (settings.data_dir / "raw").iterdir()

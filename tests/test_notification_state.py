@@ -316,8 +316,8 @@ def test_0003_upgrade_preserves_data_and_never_activates_notifications(tmp_path,
                     connection.execute(sa.select(documents.c.discovered_title)).scalar_one()
                     == "preserved"
                 )
-        assert initialize_storage(settings) == "0008_list_references"
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
+        assert initialize_storage(settings) == "0009_opportunity_review"
         with engine.connect() as connection:
             assert (
                 connection.execute(sa.select(documents.c.discovered_title)).scalar_one()

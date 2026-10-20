@@ -28,7 +28,7 @@ from signalnest.notifications.contracts import (
     canonical_json,
     canonical_sha256,
 )
-from signalnest.notifications.decision import decide, policy_manifest
+from signalnest.notifications.decision import deadline_for_profile, decide, policy_manifest
 from signalnest.notifications.facts import extract_facts
 from signalnest.notifications.state import (
     SHANGHAI,
@@ -572,11 +572,12 @@ def prepare_reevaluation(
     frozen_items = []
     for item in inputs:
         facts = extract_facts(_content(item["version"]))
+        effective_time = deadline_for_profile(facts, profile)
         recent = today - timedelta(days=6) <= facts.published_date <= today
         opened = (
             facts.category == "opportunity"
-            and facts.deadline_at is not None
-            and facts.deadline_at >= now
+            and effective_time.deadline_at is not None
+            and effective_time.deadline_at >= now
             and (facts.opening_confirmed or facts.opens_at is not None)
             and (facts.opens_at is None or facts.opens_at <= now)
         )

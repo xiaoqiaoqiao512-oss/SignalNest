@@ -224,9 +224,9 @@ def test_example_profile_keeps_hypothetical_qualifications_and_current_manifest(
     assert "teaching_assistant" in chosen.interest_topics
     manifest = policy_manifest(chosen)
     assert manifest["versions"] == {
-        "facts_extractor": "whu-notice-facts-v8",
-        "rules": "notification-rules-v8",
-        "decision_engine": "notification-decision-v8",
+        "facts_extractor": "whu-notice-facts-v10",
+        "rules": "notification-rules-v10",
+        "decision_engine": "notification-decision-v10",
         "routing": "notification-routing-v1",
     }
     assert manifest["facts_rules"]["teaching_assistant"]["applicant_object"]
@@ -241,7 +241,7 @@ def test_deterministic_decisions_and_compact_v6_compatibility_sample():
     decision = Decision.model_validate(compact["decision"])
     assert decision.rules_version == "notification-rules-v6"
     assert decision.model_dump(mode="json") == compact["decision"]
-    assert FACTS_EXTRACTOR_VERSION == "whu-notice-facts-v8"
+    assert FACTS_EXTRACTOR_VERSION == "whu-notice-facts-v10"
 
 
 def test_cs_production_evaluation_matches_selected_sanitized_inputs_and_summary():

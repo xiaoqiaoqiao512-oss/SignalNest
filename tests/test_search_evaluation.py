@@ -34,7 +34,7 @@ def _modified_manifest(tmp_path, mutate):
 def test_real_corpus_uses_original_archive_and_production_index(report):
     assert report["summary"]["corpus_count"] == report["summary"]["indexed_count"] == 9
     assert report["summary"]["query_count"] == 15
-    assert report["storage_revision"] == "0008_list_references"
+    assert report["storage_revision"] == "0009_opportunity_review"
     assert report["summary"]["engineering_mismatch_queries"] == []
     assert report["summary"]["rebuild_results_identical"] is True
     assert report["summary"]["production_matches_fixed_alias_candidate"] is True

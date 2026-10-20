@@ -317,9 +317,9 @@ def test_current_policy_versions_change_without_changing_content_hash_contract()
     facts = extract_facts(notice)
     assert facts.content_sha256 == notice.content_sha256()
     assert policy_manifest(profile())["versions"] == {
-        "facts_extractor": "whu-notice-facts-v8",
-        "rules": "notification-rules-v8",
-        "decision_engine": "notification-decision-v8",
+        "facts_extractor": "whu-notice-facts-v10",
+        "rules": "notification-rules-v10",
+        "decision_engine": "notification-decision-v10",
         "routing": "notification-routing-v1",
     }
 

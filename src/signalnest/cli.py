@@ -95,6 +95,21 @@ def main(argv: list[str] | None = None) -> int:
     reevaluate.add_argument("--event-id", action="append", help="显式事件 ID，可重复，最多 100 个")
     reevaluate.add_argument("--at", help="新建操作的显式 UTC Unix 秒；恢复时省略")
     reevaluate.add_argument("--preview", action="store_true", help="只读预览显式事件集合")
+    review = commands.add_parser(
+        "notifications-review-open", help="预览较早发布的当前机会；显式 --apply 登记回顾，不发送"
+    )
+    review.add_argument("--config", type=Path, required=True)
+    review.add_argument("--operation-id", help="显式登记或恢复的稳定操作标识")
+    review.add_argument("--source-document-id", action="append", help="来源内稳定身份，可重复")
+    review.add_argument("--at", help="预览/新建操作的显式 UTC Unix 秒")
+    review.add_argument("--lookback-days", type=int, default=90, help="自动预览范围，1–366天")
+    review.add_argument("--limit", type=int, default=100, help="自动预览上限，1–100条")
+    mode = review.add_mutually_exclusive_group()
+    mode.add_argument("--preview", action="store_true", help="只读预览（默认）")
+    mode.add_argument("--apply", action="store_true", help="登记明确选定的确认开放机会；不发送")
+    review.add_argument(
+        "--model-config", type=Path, help="仅预览：复用查询模型配置，显式启用语义复核"
+    )
     mail_plan = commands.add_parser("mail-plan", help="有界计划并冻结本地邮件；不发送")
     mail_plan.add_argument("--config", type=Path, required=True)
     mail_plan.add_argument("--at", help="本次计划 UTC Unix 秒，默认当前处理时间")
@@ -266,6 +281,10 @@ def main(argv: list[str] | None = None) -> int:
         return _mail_sending_command(args, settings, logger, run_id)
     if args.command in {"notifications-policy-update", "notifications-reevaluate"}:
         return _notification_maintenance_command(args, settings, logger, run_id)
+    if args.command == "notifications-review-open":
+        from signalnest.notifications.review_cli import run_review_command
+
+        return run_review_command(args, settings, logger, run_id)
     log_event(logger, Event.CONFIG_VALIDATED, source_id=settings.source.id, run_id=run_id)
     print(f"配置有效: source_id={settings.source.id}")
     print(f"data_dir={settings.storage.data_dir}")

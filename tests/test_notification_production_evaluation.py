@@ -314,13 +314,11 @@ def test_recruitment_fact_expectations_are_checked_in_report(tmp_path, expected,
 def test_current_snapshots_describe_actual_production_code_and_fixed_inputs(manifest, snapshot):
     current = evaluate_cases(manifest)
     saved = json.loads((ROOT / "docs/validation" / snapshot).read_text())
-    if snapshot == "notification-production-current.json":
-        for field in ("source_sha256", "manifest_sha256", "versions", "summary"):
-            assert saved[field] == current[field]
-        assert "results" not in saved
-    else:
-        for field in ("source_sha256", "manifest_sha256", "versions", "summary", "results"):
-            assert saved[field] == current[field]
+    for field in ("source_sha256", "manifest_sha256", "versions", "summary"):
+        assert saved[field] == current[field]
+    # Public snapshots are compact: full page content and row-level evidence
+    # remain in the local research area, not version control.
+    assert "results" not in saved
 
 
 def test_current_instruction_regressions_keep_actual_v5_failure_and_explicit_engineering_inputs():
@@ -360,7 +358,7 @@ def test_original_misses_keep_actual_v7_failures_and_the_same_complete_inputs():
     )
     current = evaluate_cases(ORIGINAL_MISSES_MANIFEST)
     assert previous["versions"]["rules"] == "notification-rules-v7"
-    assert current["versions"]["rules"] == "notification-rules-v8"
+    assert current["versions"]["rules"] == "notification-rules-v10"
     assert previous["manifest_sha256"] == current["manifest_sha256"]
     assert previous["summary"]["engineering_mismatch_cases"] == ["O01", "O02"]
     assert current["summary"]["engineering_mismatch_cases"] == []
@@ -382,3 +380,103 @@ def test_original_misses_keep_actual_v7_failures_and_the_same_complete_inputs():
         assert new["decision"]["effective_route"] == "immediate"
         assert new["decision"]["reason_codes"] == ["deadline_soon"]
         assert old["decision"]["content_sha256"] == new["decision"]["content_sha256"]
+
+
+
+def _write_synthetic_archive(tmp_path):
+    from signalnest.contracts import NoticeContent
+
+    content = NoticeContent(
+        title="科研训练报名通知",
+        published_date="2026-10-19",
+        body_html="<p>本科生可报名科研训练。</p>",
+        body_text="本科生可报名科研训练。",
+    )
+    row = {
+        "case_id": "SYNTHETIC-1",
+        "notice_content": content.model_dump(mode="json"),
+        "content_sha256": content.content_sha256(),
+        "source_id": "synthetic-source",
+        "source_document_id": "synthetic:notice-1",
+        "source_url": "https://example.invalid/notices/1",
+        "response_requested_url": "https://example.invalid/notices/1",
+        "response_final_url": "https://example.invalid/notices/1",
+        "raw_body_sha256": "a" * 64,
+        "parser_version": "synthetic-parser-v1",
+        "fetched_at": 1,
+        "parsed_at": 2,
+        "provenance": "explicit synthetic test data",
+    }
+    archive = {"format": "signalnest-notification-archive-v1", "cases": [row]}
+    path = tmp_path / "tests" / "fixtures" / "archive.json"
+    path.parent.mkdir(parents=True)
+    payload = (json.dumps(archive, ensure_ascii=False) + "\n").encode()
+    path.write_bytes(payload)
+    case = {
+        "archive": "tests/fixtures/archive.json",
+        "archive_sha256": hashlib.sha256(payload).hexdigest(),
+        "archive_case_id": "SYNTHETIC-1",
+        "content_sha256": content.content_sha256(),
+    }
+    return content, archive, path, case
+
+
+def test_synthetic_archived_content_requires_file_and_content_digests(tmp_path, monkeypatch):
+    from signalnest.contracts import NoticeContent
+
+    reader = EVALUATION["_archived_content"]
+    monkeypatch.setitem(reader.__globals__, "ROOT", tmp_path)
+    original, _, _, case = _write_synthetic_archive(tmp_path)
+    loaded, provenance = reader(case, NoticeContent)
+    assert loaded == original
+    assert loaded.content_sha256() == case["content_sha256"]
+    assert provenance["source_id"] == "synthetic-source"
+    assert provenance["provenance"] == "explicit synthetic test data"
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["../archive.json", "/tmp/archive.json", "README.md", "research/fixtures/archive.json"],
+)
+def test_archived_content_paths_are_confined_to_json_test_fixtures(tmp_path, monkeypatch, path):
+    from signalnest.contracts import NoticeContent
+
+    reader = EVALUATION["_archived_content"]
+    monkeypatch.setitem(reader.__globals__, "ROOT", tmp_path)
+    _, _, _, case = _write_synthetic_archive(tmp_path)
+    case["archive"] = path
+    with pytest.raises(EvaluationError, match="evaluation_archive_path_invalid"):
+        reader(case, NoticeContent)
+
+
+def test_archived_content_rejects_digest_mismatch_and_ambiguous_case(tmp_path, monkeypatch):
+    from signalnest.contracts import NoticeContent
+
+    reader = EVALUATION["_archived_content"]
+    monkeypatch.setitem(reader.__globals__, "ROOT", tmp_path)
+    _, archive, path, case = _write_synthetic_archive(tmp_path)
+    case["archive_sha256"] = "0" * 64
+    with pytest.raises(EvaluationError, match="evaluation_archive_digest_mismatch"):
+        reader(case, NoticeContent)
+
+    archive["cases"].append(archive["cases"][0])
+    payload = (json.dumps(archive, ensure_ascii=False) + "\n").encode()
+    path.write_bytes(payload)
+    case["archive_sha256"] = hashlib.sha256(payload).hexdigest()
+    with pytest.raises(EvaluationError, match="evaluation_archive_case_invalid"):
+        reader(case, NoticeContent)
+
+
+def test_archived_content_symlink_cannot_escape_fixture_directory(tmp_path, monkeypatch):
+    from signalnest.contracts import NoticeContent
+
+    reader = EVALUATION["_archived_content"]
+    monkeypatch.setitem(reader.__globals__, "ROOT", tmp_path)
+    _, _, _, case = _write_synthetic_archive(tmp_path)
+    outside = tmp_path / "outside.json"
+    outside.write_bytes((tmp_path / case["archive"]).read_bytes())
+    archive_path = tmp_path / case["archive"]
+    archive_path.unlink()
+    archive_path.symlink_to(outside)
+    with pytest.raises(EvaluationError, match="evaluation_archive_path_invalid"):
+        reader(case, NoticeContent)

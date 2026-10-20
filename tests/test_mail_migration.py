@@ -59,6 +59,7 @@ def snapshot(engine):
             and name not in NEW_TABLES | N4_TABLES
             and name != "search_documents"
             and name != "discovered_references"
+            and name != "notification_opportunity_review_operations"
             and not name.startswith("search_fts")
         }
 
@@ -149,8 +150,8 @@ def test_0004_upgrade_preserves_pending_events_and_intents(tmp_path, failure_tab
                 )
                 assert not NEW_TABLES.intersection(sa.inspect(connection).get_table_names())
 
-        assert initialize_storage(settings) == "0008_list_references"
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
+        assert initialize_storage(settings) == "0009_opportunity_review"
         assert snapshot(engine) == original
         with engine.connect() as connection:
             for table in (mail_messages, mail_message_members, mail_plan_errors):

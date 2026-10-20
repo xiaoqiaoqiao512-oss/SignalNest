@@ -482,8 +482,14 @@ notification_events = sa.Table(
         name="fk_event_outbox",
         use_alter=True,
     ),
-    sa.CheckConstraint("event_seq > 0", name="ck_event_sequence"),
-    sa.CheckConstraint("kind IN ('new','update','activation_recent')", name="ck_event_kind"),
+    sa.CheckConstraint(
+        "(kind = 'opportunity_review' AND event_seq = 0) OR "
+        "(kind != 'opportunity_review' AND event_seq > 0)",
+        name="ck_event_sequence",
+    ),
+    sa.CheckConstraint(
+        "kind IN ('new','update','activation_recent','opportunity_review')", name="ck_event_kind"
+    ),
     sa.CheckConstraint("effective_route IN ('none','immediate','digest')", name="ck_event_route"),
     sa.CheckConstraint(
         "(effective_route = 'none') = (delivery_intent_registered_at IS NULL)",
@@ -749,5 +755,32 @@ notification_operations = sa.Table(
     sa.CheckConstraint(
         "finished_at IS NULL OR finished_at >= created_at",
         name="ck_notification_operation_finished",
+    ),
+)
+
+# Document-level explicit review is separate from live content sequencing. One
+# reserved sequence-zero event per installation/document prevents duplicate
+# opportunity reminders across operation IDs without changing live baselines.
+notification_opportunity_review_operations = sa.Table(
+    "notification_opportunity_review_operations",
+    metadata,
+    sa.Column("id", sa.Text, primary_key=True),
+    sa.Column(
+        "installation_id",
+        sa.Text,
+        sa.ForeignKey("notification_channel_state.installation_id"),
+        nullable=False,
+    ),
+    sa.Column("source_id", sa.Text, nullable=False),
+    sa.Column("parameters", sa.JSON, nullable=False),
+    sa.Column("parameters_sha256", sa.Text, nullable=False),
+    sa.Column("snapshot", sa.JSON, nullable=False),
+    sa.Column("results", sa.JSON, nullable=False),
+    sa.Column("created_at", sa.Integer, nullable=False),
+    sa.Column("finished_at", sa.Integer),
+    sa.CheckConstraint("length(parameters_sha256) = 64", name="ck_opportunity_review_digest"),
+    sa.CheckConstraint(
+        "finished_at IS NULL OR finished_at >= created_at",
+        name="ck_opportunity_review_finished",
     ),
 )

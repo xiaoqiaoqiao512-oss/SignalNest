@@ -24,7 +24,12 @@ _ADDRESS = re.compile(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-
 _MESSAGE_ID = re.compile(
     r"<[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?>"
 )
-_KINDS = {"new": "新通知", "update": "内容更新", "activation_recent": "启用时的近期候选"}
+_KINDS = {
+    "new": "新通知",
+    "update": "内容更新",
+    "activation_recent": "启用时的近期候选",
+    "opportunity_review": "仍开放机会回顾（非新发布）",
+}
 
 
 def _address(value: str) -> str:

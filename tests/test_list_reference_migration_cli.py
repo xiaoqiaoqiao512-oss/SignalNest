@@ -70,7 +70,7 @@ def old_database(tmp_path):
 def test_0007_upgrade_and_repeat_keep_existing_evidence_unknown(old_database):
     settings, engine, before = old_database
     original = {path.name: path.read_bytes() for path in (settings.data_dir / "raw").iterdir()}
-    assert initialize_storage(settings) == initialize_storage(settings) == "0008_list_references"
+    assert initialize_storage(settings) == initialize_storage(settings) == "0009_opportunity_review"
     with engine.connect() as connection:
         assert connection.execute(sa.select(discovered_references)).all() == []
         for table, values in before.items():
@@ -117,7 +117,7 @@ def test_failed_upgrade_is_atomic_without_rebuilding_old_tables(old_database, bo
         }
         for table, values in before.items():
             assert connection.exec_driver_sql(f"SELECT * FROM {table}").all() == values
-    assert initialize_storage(settings) == "0008_list_references"
+    assert initialize_storage(settings) == "0009_opportunity_review"
 
 
 def test_database_constraints_protect_reference_identity_and_provenance(state_env):

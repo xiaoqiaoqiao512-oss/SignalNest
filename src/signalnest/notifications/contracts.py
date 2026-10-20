@@ -10,9 +10,9 @@ from pydantic import Field, field_validator, model_serializer, model_validator
 
 from signalnest.contracts import Contract, Digest, NonemptyText, WebUrl
 
-FACTS_EXTRACTOR_VERSION = "whu-notice-facts-v8"
-RULES_VERSION = "notification-rules-v8"
-DECISION_ENGINE_VERSION = "notification-decision-v8"
+FACTS_EXTRACTOR_VERSION = "whu-notice-facts-v10"
+RULES_VERSION = "notification-rules-v10"
+DECISION_ENGINE_VERSION = "notification-decision-v10"
 ROUTING_VERSION = "notification-routing-v1"
 
 Topic = Literal[
@@ -192,6 +192,26 @@ class QualificationConstraint(Contract):
     evidence: Evidence
 
 
+class ScopedDeadline(Contract):
+    """A witnessed deadline for one applicant group, never a global latest date."""
+
+    applicant_group: Literal["general", "undergraduate", "graduate", "international"]
+    deadline_at: datetime
+    deadline_lower_at: datetime | None = None
+    evidence: tuple[Evidence, ...] = Field(min_length=1)
+
+    @field_validator("deadline_at", "deadline_lower_at")
+    @classmethod
+    def explicit_time(cls, value):
+        return aware_time(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def ordered_bounds(self):
+        if self.deadline_lower_at is not None and self.deadline_lower_at > self.deadline_at:
+            raise ValueError("deadline bounds must be ordered")
+        return self
+
+
 class NoticeFacts(Contract):
     content_sha256: Digest
     extractor_version: NonemptyText = FACTS_EXTRACTOR_VERSION
@@ -210,6 +230,7 @@ class NoticeFacts(Contract):
     # For 日前, deadline_at is only the conservative latest boundary; this lower
     # bound and an unknown item preserve the uncertainty instead of inventing precision.
     deadline_lower_at: datetime | None = None
+    scoped_deadlines: tuple[ScopedDeadline, ...] = ()
     opening_confirmed: bool = Field(default=False, strict=True)
     time_evidence: tuple[Evidence, ...] = ()
     information_incomplete: bool = Field(default=False, strict=True)
@@ -239,13 +260,15 @@ class NoticeFacts(Contract):
         snapshot = handler(self)
         if self.deadline_lower_at is None:
             snapshot.pop("deadline_lower_at", None)
+        if not self.scoped_deadlines:
+            snapshot.pop("scoped_deadlines", None)
         return snapshot
 
 
 class EventContext(Contract):
     """Preview claims only. N1 must later supply durable, verified event provenance."""
 
-    kind: Literal["new", "update", "activation_recent", "historical"] = "new"
+    kind: Literal["new", "update", "activation_recent", "historical", "opportunity_review"] = "new"
     notification_mode: Literal["hybrid", "digest_only"] = "hybrid"
     previous_facts: NoticeFacts | None = Field(default=None, repr=False)
     previous_action: Action | None = None

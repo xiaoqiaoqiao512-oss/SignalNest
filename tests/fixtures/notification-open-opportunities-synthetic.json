@@ -1,0 +1,90 @@
+{
+  "format": "signalnest-notification-open-opportunities-synthetic-v1",
+  "scope": "short synthetic cases for policy regressions; no source page content",
+  "cases": [
+    {
+      "case_id": "OPEN_PRIMARY",
+      "source_document_id": "synthetic:open-primary",
+      "source_url": "https://example.invalid/notices/open-primary",
+      "notice_content": {
+        "title": "校级竞赛报名通知",
+        "published_date": "2026-10-10",
+        "body_html": "<p>组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月23日23:59:59。</p>",
+        "body_text": "组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月23日23:59:59。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    },
+    {
+      "case_id": "OPEN_GROUPED",
+      "source_document_id": "synthetic:open-grouped",
+      "source_url": "https://example.invalid/notices/open-grouped",
+      "notice_content": {
+        "title": "市场调查竞赛报名通知",
+        "published_date": "2026-10-10",
+        "body_html": "<p>组织活动已经开始，现将有关事项通知如下。报名对象：武汉大学本科生和研究生均可报名。报名及比赛安排：报名截止时间：2026年10月31日。注：研究生组和在华留学生组，学生参赛报名截止日期可延到2026年11月15日。</p>",
+        "body_text": "组织活动已经开始，现将有关事项通知如下。报名对象：武汉大学本科生和研究生均可报名。报名及比赛安排：报名截止时间：2026年10月31日。注：研究生组和在华留学生组，学生参赛报名截止日期可延到2026年11月15日。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    },
+    {
+      "case_id": "OPEN_MIDNIGHT",
+      "source_document_id": "synthetic:open-midnight",
+      "source_url": "https://example.invalid/notices/open-midnight",
+      "notice_content": {
+        "title": "工程实践竞赛报名通知",
+        "published_date": "2026-10-10",
+        "body_html": "<p>组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月31日24:00。</p>",
+        "body_text": "组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月31日24:00。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    },
+    {
+      "case_id": "OPEN_UNCERTAIN",
+      "source_document_id": "synthetic:open-uncertain",
+      "source_url": "https://example.invalid/notices/open-uncertain",
+      "notice_content": {
+        "title": "外语能力赛报名通知",
+        "published_date": "2026-10-10",
+        "body_html": "<p>组织活动已经开始，现将有关事项通知如下。报名对象：武汉大学全日制本科生和研究生均可报名。报名截止日期为10月23日。报名条件详见附件。</p>",
+        "body_text": "组织活动已经开始，现将有关事项通知如下。报名对象：武汉大学全日制本科生和研究生均可报名。报名截止日期为10月23日。报名条件详见附件。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    },
+    {
+      "case_id": "CLOSED",
+      "source_document_id": "synthetic:closed",
+      "source_url": "https://example.invalid/notices/closed",
+      "notice_content": {
+        "title": "校级竞赛报名通知",
+        "published_date": "2026-10-05",
+        "body_html": "<p>组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月7日。</p>",
+        "body_text": "组织活动已经开始，现将有关事项通知如下。面向武汉大学本科生。报名及比赛安排：报名截止时间：2026年10月7日。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    },
+    {
+      "case_id": "LATER_STAGE",
+      "source_document_id": "synthetic:later-stage",
+      "source_url": "https://example.invalid/notices/later-stage",
+      "notice_content": {
+        "title": "竞赛项目结果公示及后续材料提交安排",
+        "published_date": "2026-10-10",
+        "body_html": "<p>现公布项目评审结果。获奖队伍请于2026年10月23日前提交后续材料。</p>",
+        "body_text": "现公布项目评审结果。获奖队伍请于2026年10月23日前提交后续材料。",
+        "links": [],
+        "images": [],
+        "attachments": []
+      }
+    }
+  ]
+}

@@ -32,7 +32,7 @@ class MailItem:
     decision_id: int
     document_id: int
     source_document_id: str
-    kind: Literal["new", "update", "activation_recent"]
+    kind: Literal["new", "update", "activation_recent", "opportunity_review"]
     occurred_at: int
     content: NoticeContent = field(repr=False)
     page_url: str

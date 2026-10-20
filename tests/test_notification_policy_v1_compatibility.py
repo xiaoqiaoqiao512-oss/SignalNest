@@ -300,5 +300,5 @@ def test_v1_live_policy_is_explicitly_outdated_then_new_update_reads_previous_v1
     )
     assert (
         rows(env, notification_decisions)[-1]["decision"]["decision_engine_version"]
-        == "notification-decision-v8"
+        == "notification-decision-v10"
     )

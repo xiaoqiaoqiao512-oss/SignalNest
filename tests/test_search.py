@@ -422,7 +422,7 @@ def test_migration_ddl_fault_rolls_back_and_preserves_previous_head(tmp_path, fa
                 connection.execute(sa.select(documents.c.discovered_title)).scalar_one()
                 == "迁移前事实"
             )
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
     finally:
         engine.dispose()
 
@@ -500,8 +500,8 @@ def test_0006_upgrade_preserves_business_rows_and_requires_explicit_index(tmp_pa
                     discovered_at=1,
                 )
             )
-        assert initialize_storage(settings) == "0008_list_references"
-        assert initialize_storage(settings) == "0008_list_references"
+        assert initialize_storage(settings) == "0009_opportunity_review"
+        assert initialize_storage(settings) == "0009_opportunity_review"
         with engine.connect() as connection:
             assert (
                 connection.execute(sa.select(documents.c.discovered_title)).scalar_one() == "旧通知"
@@ -514,7 +514,7 @@ def test_0006_upgrade_preserves_business_rows_and_requires_explicit_index(tmp_pa
             )
             assert (
                 MigrationContext.configure(connection).get_current_revision()
-                == "0008_list_references"
+                == "0009_opportunity_review"
             )
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     finally:

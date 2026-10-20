@@ -343,14 +343,14 @@ def test_current_versions_are_explicit_without_changing_content_or_routing_contr
     content = notice("面向武汉大学本科生。即日起报名，" + DEADLINE)
     facts, decision = evaluate(content)
     assert facts.content_sha256 == content.content_sha256()
-    assert facts.extractor_version == "whu-notice-facts-v8"
-    assert decision.rules_version == "notification-rules-v8"
-    assert decision.decision_engine_version == "notification-decision-v8"
+    assert facts.extractor_version == "whu-notice-facts-v10"
+    assert decision.rules_version == "notification-rules-v10"
+    assert decision.decision_engine_version == "notification-decision-v10"
     assert decision.routing_version == "notification-routing-v1"
     assert policy_manifest(Profile(interest_topics=("research",)))["versions"] == {
-        "facts_extractor": "whu-notice-facts-v8",
-        "rules": "notification-rules-v8",
-        "decision_engine": "notification-decision-v8",
+        "facts_extractor": "whu-notice-facts-v10",
+        "rules": "notification-rules-v10",
+        "decision_engine": "notification-decision-v10",
         "routing": "notification-routing-v1",
     }
 

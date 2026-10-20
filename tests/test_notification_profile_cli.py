@@ -298,7 +298,15 @@ print(decision.model_dump_json())
         )
         assert result.returncode == 0 and result.stderr == ""
         output = json.loads(result.stdout)
-        assert sum(item["code"] == "conflicting_evidence" for item in output["unknowns"]) == 2
+        # The entry-year declarations conflict. A bare teacher object is no
+        # longer a competing *study level*: retain its unresolved applicant
+        # scope separately, without turning that word into a hard exclusion.
+        conflicts = [item for item in output["unknowns"] if item["code"] == "conflicting_evidence"]
+        assert len(conflicts) == 1
+        assert any("2023级" in proof["excerpt"] for proof in conflicts[0]["evidence"]) and any(
+            "2024级" in proof["excerpt"] for proof in conflicts[0]["evidence"]
+        )
+        assert any(item["code"] == "applicant_scope_unknown" for item in output["unknowns"])
         outputs.append(output)
     assert outputs[0] == outputs[1] == outputs[2]
     assert list(tmp_path.iterdir()) == []

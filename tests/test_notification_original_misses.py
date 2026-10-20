@@ -88,7 +88,7 @@ def test_original_phrases_reach_same_day_urgency_with_exact_positioned_evidence(
             assert content.body_text[proof.start : proof.end] == proof.excerpt
     again_content, again_facts, again_decision = evaluate(row)
     assert again_content == content and again_facts == facts and again_decision == decision
-    assert decision.rules_version == "notification-rules-v8"
+    assert decision.rules_version == "notification-rules-v10"
 
 
 @pytest.mark.parametrize(
@@ -279,7 +279,7 @@ def test_real_local_preview_has_no_storage_lock_or_http_side_effects(
         and result["decision"]["effective_route"] == "immediate"
     )
     assert result["decision"]["content_sha256"] == CONTENT_HASHES[row["case_id"]]
-    assert result["decision"]["rules_version"] == "notification-rules-v8"
+    assert result["decision"]["rules_version"] == "notification-rules-v10"
     assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == before
 
 

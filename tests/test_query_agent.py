@@ -406,7 +406,7 @@ def test_full_model_loop_refines_reads_and_answers_from_real_data(campus, monkey
     assert "test-secret" not in report.model_dump_json()
 
 
-def test_rule_mismatch_exposes_original_scope_without_claiming_personal_eligibility(
+def test_historical_teacher_scope_does_not_exclude_student_or_claim_verified_eligibility(
     campus, monkeypatch
 ):
     teacher_sentence = "面向全校教师共征集了1100余个在研科研项目选题"
@@ -436,7 +436,7 @@ def test_rule_mismatch_exposes_original_scope_without_claiming_personal_eligibil
             next(m["content"] for m in reversed(payload["messages"]) if m["role"] == "tool")
         )["data"]
         responses.append(notice)
-        assert notice["facts"]["eligibility"] == "ineligible"
+        assert notice["facts"]["eligibility"] == "unknown"
         return httpx.Response(
             200,
             json=completion(
@@ -459,22 +459,33 @@ def test_rule_mismatch_exposes_original_scope_without_claiming_personal_eligibil
     assert report.status == "answered" and report.error_code is None
     result = report.notices[0]
     assert result["official_eligibility_verified"] is False
-    # Preserve the current rules' actual result while disclosing its evidence;
-    # this test deliberately does not claim that the faculty interpretation is right.
-    assert result["rule_eligibility"] == "ineligible"
-    mismatches = result["rule_mismatch_evidence"]
-    assert 1 <= len(mismatches) <= 4
-    level = next(item for item in mismatches if item["field"] == "study_level")
-    evidence = level["evidence"]
-    assert evidence["field"] == "body_text"
-    assert teacher_sentence in evidence["excerpt"]
-    assert body_text[evidence["start"] : evidence["end"]] == evidence["excerpt"]
-    assert all(set(item) == {"field", "evidence"} for item in mismatches)
-    assert all("actual" not in item for item in mismatches)
+    assert result["rule_eligibility"] == "unknown"
+    assert result["rule_mismatch_evidence"] == []
     text = render_report(report)
     assert "本人资格：未知（尚未核对完整申请主体与条件）" in text
-    assert f"规则不匹配依据（study_level）：{evidence['excerpt']}" in text
-    assert "请核对该句是否针对申请人" in text and student_sentence in text
+    assert "规则不匹配依据" not in text and student_sentence in text
+    assert digests(campus) == before
+
+
+def test_real_current_teacher_mismatch_keeps_bounded_original_evidence(campus, tools):
+    sentence = "现面向全校教师征集2027年科研训练项目选题"
+    body = sentence + "。这些项目由教师指导学生开展科研训练。"
+    imported = import_text_notice(campus, body)
+    before = digests(campus)
+    data = read(tools, "uc", imported.document_id)
+    assert data["facts"]["eligibility"] == "ineligible"
+    assert data["facts"]["official_eligibility_verified"] is False
+    # Read through the actual tools then compose a locally validated answer;
+    # qualification evidence stays auditable without claiming official eligibility.
+    outcome = call(tools, "answer", notices=[selection(data)])
+    assert outcome["ok"], outcome
+    mismatches = outcome["data"][0]["rule_mismatch_evidence"]
+    assert 1 <= len(mismatches) <= 4
+    role = next(item for item in mismatches if item["field"] == "role")
+    proof = role["evidence"]
+    assert sentence in proof["excerpt"]
+    assert body[proof["start"] : proof["end"]] == proof["excerpt"]
+    assert all(set(item) == {"field", "evidence"} for item in mismatches)
     assert digests(campus) == before
 
 

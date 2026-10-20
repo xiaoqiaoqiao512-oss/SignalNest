@@ -59,6 +59,9 @@ def policy_manifest(profile: Profile) -> dict:
             "urgent_deadline_boundary": "lower bound, or now after entering its uncertain interval",
             "closed_deadline_boundary": "upper bound only; uncertainty is not confirmed expiration",
             "uncertain_deadline_requires_review": True,
+            "group_deadlines": (
+                "select explicit applicant study group; never use another group's extension"
+            ),
             "recent_calendar_days": 7,
             "timezone": "Asia/Shanghai",
             "store_only_scope": (
@@ -93,6 +96,8 @@ def policy_manifest(profile: Profile) -> dict:
             "activation_recent_default": "digest",
             "activation_recent_exception": "open_deadline_at_or_before_next_digest",
             "digest_only_precedes_activation_exception": True,
+            "opportunity_review_default": "digest",
+            "opportunity_review_exception": "open_deadline_at_or_before_next_digest",
         },
         "versions": {
             "facts_extractor": FACTS_EXTRACTOR_VERSION,
@@ -166,10 +171,82 @@ def _qualification(profile: Profile, facts: NoticeFacts):
     return "eligible", tuple(results), ()
 
 
+def deadline_for_profile(facts: NoticeFacts, profile: Profile) -> NoticeFacts:
+    """Return a derived time view; callers retain the original extraction for hashes.
+
+    Nationality is not in Profile. International extensions remain visible as
+    unknown exceptions and are never borrowed for the ordinary student group.
+    """
+    if not facts.scoped_deadlines:
+        return facts
+    group = {"undergraduate": "undergraduate", "master": "graduate", "doctoral": "graduate"}.get(
+        profile.study_level
+    )
+    selected = [item for item in facts.scoped_deadlines if item.applicant_group == group]
+    if not selected and group is not None:
+        selected = [item for item in facts.scoped_deadlines if item.applicant_group == "general"]
+    values = {(item.deadline_at, item.deadline_lower_at) for item in selected}
+    unknowns = list(facts.unknowns)
+    if len(values) != 1:
+        unknowns.append(
+            _unknown(
+                "deadline_group_unknown",
+                "deadline",
+                "未能唯一确定画像对应的报名组别和截止时间。",
+                tuple(proof for item in facts.scoped_deadlines for proof in item.evidence),
+            )
+        )
+        return facts.model_copy(
+            update={"deadline_at": None, "deadline_lower_at": None, "unknowns": _unique(unknowns)}
+        )
+    deadline, lower = next(iter(values))
+    if any(item.applicant_group == "international" for item in facts.scoped_deadlines):
+        unknowns.append(
+            _unknown(
+                "international_deadline_exception",
+                "deadline",
+                "正文另有留学生延期；画像未声明该身份，此处仅采用已识别常规组期限，请核对适用范围。",
+                tuple(
+                    proof
+                    for item in facts.scoped_deadlines
+                    if item.applicant_group == "international"
+                    for proof in item.evidence
+                ),
+            )
+        )
+    return facts.model_copy(
+        update={
+            "deadline_at": deadline,
+            "deadline_lower_at": lower,
+            "time_evidence": _unique(
+                facts.time_evidence + tuple(p for s in selected for p in s.evidence)
+            ),
+            "unknowns": _unique(unknowns),
+        }
+    )
+
+
 def _time(facts: NoticeFacts, now: datetime):
     if facts.category != "opportunity":
         return "not_required", ()
-    if facts.cancelled or (facts.deadline_at is not None and now > facts.deadline_at):
+    if facts.cancelled:
+        return "closed", ()
+    if facts.deadline_at is not None and now > facts.deadline_at:
+        later_exception = tuple(
+            proof
+            for item in facts.scoped_deadlines
+            if item.applicant_group == "international" and item.deadline_at >= now
+            for proof in item.evidence
+        )
+        if later_exception:
+            return "unknown", (
+                _unknown(
+                    "deadline_exception_unresolved",
+                    "deadline",
+                    "常规组期限已过，但留学生延期可能仍有效；画像未明确此身份，不能确认仍开放或已关闭。",
+                    later_exception,
+                ),
+            )
         return "closed", ()
     if facts.opens_at is not None and now < facts.opens_at:
         return "not_started", ()
@@ -249,14 +326,17 @@ def compose_route(
         return "digest", ("digest_action",)
     if context.notification_mode == "digest_only":
         return "digest", ("digest_only_mode",)
-    if context.kind == "activation_recent":
+    if context.kind in {"activation_recent", "opportunity_review"}:
+        prefix = "activation" if context.kind == "activation_recent" else "opportunity_review"
         if (
             time_status == "open"
             and deadline_at is not None
             and now <= deadline_at <= context.next_digest_at
         ):
-            return "immediate", ("activation_urgency_exception",)
-        return "digest", ("activation_recent_digest",)
+            return "immediate", (prefix + "_urgency_exception",)
+        return "digest", (
+            "activation_recent_digest" if prefix == "activation" else "opportunity_review_digest",
+        )
     return "immediate", ("hybrid_immediate",)
 
 
@@ -274,6 +354,8 @@ def decide(
         raise ValueError("previous_facts must use the current extractor_version; re-extract first")
     if context.next_digest_at <= evaluated_at:
         raise ValueError("next_digest_at must be later than evaluated_at")
+    extracted_facts = facts
+    facts = deadline_for_profile(facts, profile)
     eligibility, constraints, qualification_unknowns = _qualification(profile, facts)
     time_status, time_unknowns = _time(facts, evaluated_at)
     unknowns = list(facts.unknowns + qualification_unknowns + time_unknowns)
@@ -346,7 +428,7 @@ def decide(
         context.kind == "update"
         and context.comparison_known
         and context.previous_facts is not None
-        and _conditions(facts) != _conditions(context.previous_facts)
+        and _conditions(facts) != _conditions(deadline_for_profile(context.previous_facts, profile))
     )
     recent_days = (evaluated_at.astimezone(_SHANGHAI).date() - facts.published_date).days
     urgent_deadline = _urgent_deadline(facts, evaluated_at)
@@ -461,12 +543,12 @@ def decide(
         evaluated_at=evaluated_at,
         profile_sha256=profile.sha256(),
         content_sha256=facts.content_sha256,
-        facts_sha256=facts.sha256(),
+        facts_sha256=extracted_facts.sha256(),
         policy_sha256=policy_digest,
         input_sha256=canonical_sha256(
             {
                 "profile": profile.model_dump(mode="json"),
-                "facts": facts.model_dump(mode="json"),
+                "facts": extracted_facts.model_dump(mode="json"),
                 "context": context.model_dump(mode="json"),
                 "evaluated_at": evaluated_at.isoformat(),
                 "policy_sha256": policy_digest,

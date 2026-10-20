@@ -1,4 +1,4 @@
-"""Replay fixed public fixtures or explicit synthetic content through production rules.
+"""Replay fixed HTML, archived content or explicit synthetic inputs through rules.
 
 This offline diagnostic does not open a database, read the personal Profile, or
 send mail. The engineering expectations are regression checks, not human gold.
@@ -46,6 +46,58 @@ def _fixture(path):
     if not resolved.is_relative_to(ROOT / "research/fixtures"):
         raise EvaluationError("evaluation_fixture_path_invalid")
     return resolved
+
+
+def _archived_content(case, notice_contract):
+    """Read a digest-bound existing parser product; do not claim a new parse/fetch."""
+    candidate = Path(case["archive"])
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise EvaluationError("evaluation_archive_path_invalid")
+    resolved = (ROOT / candidate).resolve()
+    if not resolved.is_relative_to(ROOT / "tests/fixtures") or resolved.suffix != ".json":
+        raise EvaluationError("evaluation_archive_path_invalid")
+    payload = resolved.read_bytes()
+    if hashlib.sha256(payload).hexdigest() != case["archive_sha256"]:
+        raise EvaluationError("evaluation_archive_digest_mismatch")
+    try:
+        archive = json.loads(payload)
+        if archive["format"] != "signalnest-notification-archive-v1":
+            raise EvaluationError("evaluation_archive_invalid")
+        selected = [row for row in archive["cases"] if row["case_id"] == case["archive_case_id"]]
+        if len(selected) != 1 or "notice_content" not in selected[0]:
+            raise EvaluationError("evaluation_archive_case_invalid")
+        row = selected[0]
+        content = notice_contract.model_validate(row["notice_content"])
+        digest = content.content_sha256()
+        if digest != row["content_sha256"] or digest != case["content_sha256"]:
+            raise EvaluationError("evaluation_content_digest_mismatch")
+        provenance = {
+            name: row[name]
+            for name in (
+                "source_id",
+                "source_document_id",
+                "source_url",
+                "response_requested_url",
+                "response_final_url",
+                "raw_body_sha256",
+                "parser_version",
+                "fetched_at",
+                "parsed_at",
+                "provenance",
+            )
+        }
+        if any(
+            not isinstance(value, str) or not value
+            for name, value in provenance.items()
+            if name not in {"fetched_at", "parsed_at"}
+        ) or any(
+            type(provenance[name]) is not int or provenance[name] < 0
+            for name in ("fetched_at", "parsed_at")
+        ):
+            raise EvaluationError("evaluation_archive_invalid")
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise EvaluationError("evaluation_archive_invalid") from exc
+    return content, provenance
 
 
 def _expectation_mismatches(decision, expectation, facts):
@@ -147,6 +199,21 @@ def evaluate_cases(case_file=DEFAULT_CASES):
                 if content.content_sha256() != case["content_sha256"]:
                     raise EvaluationError("evaluation_content_digest_mismatch")
                 page = None
+            elif input_kind == "archived_notice_content":
+                if any(
+                    name in case
+                    for name in (
+                        "fixture",
+                        "sha256",
+                        "source_url",
+                        "research_case",
+                        "parser",
+                        "synthetic_notice_content",
+                    )
+                ):
+                    raise EvaluationError("evaluation_case_invalid")
+                content, archive_provenance = _archived_content(case, NoticeContent)
+                page = None
             else:
                 raise EvaluationError("evaluation_input_kind_invalid")
             profile = profiles[case["profile"]]
@@ -178,10 +245,23 @@ def evaluate_cases(case_file=DEFAULT_CASES):
                 source_url=case["source_url"],
                 parser=selected_parser,
             )
-        else:
+        elif input_kind == "synthetic_notice_content":
             row.update(
                 synthetic_notice_content=content.model_dump(mode="json"),
                 content_sha256=content.content_sha256(),
+                parser_applied=False,
+            )
+        else:
+            row.update(
+                archive=case["archive"],
+                archive_sha256=case["archive_sha256"],
+                archive_case_id=case["archive_case_id"],
+                archived_notice_content=content.model_dump(mode="json"),
+                content_sha256=content.content_sha256(),
+                source_id=archive_provenance["source_id"],
+                source_document_id=archive_provenance["source_document_id"],
+                source_url=archive_provenance["source_url"],
+                archived_provenance=archive_provenance,
                 parser_applied=False,
             )
         if page is not None:
@@ -249,6 +329,7 @@ def evaluate_cases(case_file=DEFAULT_CASES):
             "cases": len(rows),
             "fixture_cases": sum(row["input_kind"] == "fixture_html" for row in rows),
             "synthetic_cases": sum(row["input_kind"] == "synthetic_notice_content" for row in rows),
+            "archived_cases": sum(row["input_kind"] == "archived_notice_content" for row in rows),
             "unique_pages": len({row["fixture_sha256"] for row in rows if "fixture_sha256" in row}),
             "parse_success": sum(row.get("parser_applied", False) for row in rows),
             "decision_success": len(decisions),
