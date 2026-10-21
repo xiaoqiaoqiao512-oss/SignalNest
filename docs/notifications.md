@@ -2,7 +2,7 @@
 
 2026-10-06 的 N0 已实现纯本地计算与 CLI 预览，这些函数仍没有持久化副作用。2026-10-07 另行完成 [N1 启用与事件持久化](notification-state.md)；现已另行完成 [N2 本地邮件计划](mail-planning.md)；[N3 SMTP 适配器](smtp.md)已完成，[N4 发送协调](mail-sending.md)与[政策维护](notification-maintenance.md)已完成。
 
-上述为旧邮件模块阶段编号。2026-10-08 开始的[新迭代 N0–N3](iteration-20261008.md)另行记录；本页当前源码规则为政策 v10；WSL 生产仍执行 v8，本轮不部署或更新线上政策。
+上述为旧邮件模块阶段编号。2026-10-08 开始的[新迭代 N0–N3](iteration-20261008.md)另行记录；本页当前源码规则为政策 v10；UC／CS 生产已于2026-10-21在一致备份后迁移到0009并显式启用v10。三条开放机会已登记，新增摘要尚待到期投递和实收，见[本轮上线记录](validation/rollout-summary-20261021.md)。后台模型自动判断尚未接入。
 
 ## 可调用接口
 
@@ -79,7 +79,7 @@ v5 的助教主题使用更严格的当前招聘门槛：裸“助教/教学助�
 
 ## 版本、摘要与边界
 
-当前固定版本分别为 `whu-notice-facts-v10`、`notification-rules-v10`、`notification-decision-v10`、`notification-routing-v1`。v10补并列报名对象、截至/秒/表格和分组期限；v9历史主体修复及此前跨主题、助教、报名语法继续保留，旧版本回放独立保存。既有事件的路线行为保持；新的opportunity_review沿用首启式默认Digest及短截止例外，digest_only仍优先。UC Parser v5、CS v3、EMS离线Parser及NoticeContent摘要不变；本地schema新增0009，生产尚未升级。变更规则时显式升版，不读取运行中可变配置。`policy_manifest(profile)`冻结Profile、事实规则、决策顺序/阈值、路线与版本；input_sha256另绑定原始提取facts、EventContext和显式时钟。派生组别时间用于判断，不替换封印的原提取。decide拒绝旧提取器facts直接混用，新评估须显式重提取。
+当前固定版本分别为 `whu-notice-facts-v10`、`notification-rules-v10`、`notification-decision-v10`、`notification-routing-v1`。v10补并列报名对象、截至/秒/表格和分组期限；v9历史主体修复及此前跨主题、助教、报名语法继续保留，旧版本回放独立保存。既有事件的路线行为保持；新的opportunity_review沿用首启式默认Digest及短截止例外，digest_only仍优先。UC Parser v5、CS v3、EMS离线Parser及NoticeContent摘要不变；schema新增0009，UC／CS生产已于2026-10-21显式升级并更新政策，旧记录及冻结邮件经校验保留。变更规则时显式升版，不读取运行中可变配置。`policy_manifest(profile)`冻结Profile、事实规则、决策顺序/阈值、路线与版本；input_sha256另绑定原始提取facts、EventContext和显式时钟。派生组别时间用于判断，不替换封印的原提取。decide拒绝旧提取器facts直接混用，新评估须显式重提取。
 
 原 bytes 摘要、`NoticeContent.content_sha256()`、Parser 版本保持原职责；事实摘要不替代正文摘要，规则版本不加入正文摘要。相同输入、上下文与时钟产生同一决策；新时钟/画像/上下文会产生新输入摘要，N0 纯函数本身不持久化这些结果。版本标识加固定规则清单是追溯约定，不保证跨规则改动忘记升版仍能安全恢复。
 
@@ -100,7 +100,7 @@ signalnest notifications-policy-update --config config.toml \
   --profile profile.toml --operation-id policy-v10-applicant-scope --at '<实际UTC秒>'
 ```
 
-政策更新不自动补发历史。希望用 v10 重评未取得投递资格、仍符合窗口的当前 live 事件时，按[政策维护](notification-maintenance.md)显式选择 event ID、新 operation ID 与时钟。已有邮件资格及冻结邮件保持原路线、理由和字节；旧误命中的 Digest 资格不会因升级自动撤回，已冻结邮件也不会自动重写。旧未完成重评恢复使用旧快照，不能偷换成 v9 规则。命令中的时间占位须替换为本次操作的实际 UTC Unix 秒，同一 operation ID 的预览和应用使用相同参数；本轮没有在 WSL 执行这些命令。
+政策更新不自动补发历史。希望用 v10 重评未取得投递资格、仍符合窗口的当前 live 事件时，按[政策维护](notification-maintenance.md)显式选择 event ID、新 operation ID 与时钟。已有邮件资格及冻结邮件保持原路线、理由和字节；旧误命中的 Digest 资格不会因升级自动撤回，已冻结邮件也不会自动重写。旧未完成重评恢复使用旧快照，不能偷换成 v9 规则。命令中的时间占位须替换为本次操作的实际 UTC Unix 秒，同一 operation ID 的预览和应用使用相同参数。2026-10-21生产发布已分别执行政策更新；这不会自动补发历史，明确选择的三条开放机会通过独立回顾操作登记。
 
 本实现参考[通知决策调研](../research/notification-decisions.md)最新 Action+needs_review 口径，拆开认知缺口和优先级；规则仍以代码和已验证样本为准，调研中的旧验收表/IMMEDIATE/REVIEW 术语不作为实现接口。独立 live 基线、稳定启用身份、A→B→A 事件与原子 planned 意图已由 [N1](notification-state.md)实现并另行测试；N0 纯函数测试本身不证明数据库事务、SMTP、重启投递或断电恢复。
 
@@ -114,4 +114,4 @@ signalnest notifications-policy-update --config config.toml \
 
 `NoticeFacts.scoped_deadlines`保留本科、研究生、国际生等有证据的分支；无分支时省略以保留旧序列化。`deadline_for_profile`创建只供判断的时间视图，不改变原事实/hash。未知画像或同组冲突不选择最早/最晚日期；本科不借用研究生或国际生延期。国际生例外仍待核对。新规则对两个真实竞赛的有限当前征集模板结合报名安排确认开放，不把裸未来截止或近期发布日期当开放。
 
-首启七天边界保留防止历史群发，较早发布但仍开放的通知由独立[机会回顾](open-opportunity-review.md)进入评估；不是改成30天，也不伪造new。模型可在回顾预览中辅助语义判断，但目前不会覆盖规则资格、修改政策或直接发信。历史报告和人工标签保持原样；本地v10未部署，正式实例最近核验仍v8。
+首启七天边界保留防止历史群发，较早发布但仍开放的通知由独立[机会回顾](open-opportunity-review.md)进入评估；不是改成30天，也不伪造new。模型可在回顾预览中辅助语义判断，但目前不会覆盖规则资格、修改政策或直接发信。历史报告和人工标签保持原样。2026-10-21 UC／CS正式实例已显式启用v10；三条开放机会回顾取得一次Digest资格，重复操作未增加事件或决策，尚待10月22日09:00摘要及实收验收。

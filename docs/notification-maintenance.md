@@ -59,6 +59,8 @@ signalnest notifications-reevaluate --config config.toml --operation-id review-v
 
 ## 历史：本地政策 v9 的显式升级
 
+以下保留v9交付当时的未部署状态；当前生产v10发布记录见下一节。
+
 v9 修复两篇真实学生项目申报被历史教师征题排除的问题，同时保留当前教师征题反例、v8 行动语法和跨主题优先级；毕业年级、团队人数/互斥、导师资质和月份时间仍待核对。事实提取/规则/决策引擎升至 v9，routing v1、Parser、schema 和 NoticeContent 内容摘要不变，见[修复验证](validation/notification-applicant-scope-v9.md)。
 
 **WSL 生产仍执行 v8，本轮没有发布 v9 或更新实例政策。** 以后经授权发布时，先备份，核对新代码的 `profile-check` 和真实输入 `decision-preview`；再用本文的新 operation ID 与实际 `--at` 预览 `notifications-policy-update`，确认后以相同参数显式保存。只安装代码不改变已启用政策，旧 manifest 与当前代码不兼容的 live 决策会明确失败，不应靠重新初始化绕过。
@@ -67,6 +69,6 @@ v9 修复两篇真实学生项目申报被历史教师征题排除的问题，�
 
 ## 当前源码：v10 与 document 级机会回顾
 
-v10 保留 v9 历史主体修复，补完整并列报名对象、秒/截至/表格日期及适用组别。新库头为 `0009_opportunity_review`；已有实例先备份，停止写入并显式 `storage-init`，然后使用新的 `notifications-policy-update --operation-id policy-v10-selected --at <实际UTC秒> --preview` 核对/登记政策。版本不兼容期间不会自动以新版规则修改旧决定。当前节点未部署到生产。
+v10 保留 v9 历史主体修复，补完整并列报名对象、秒/截至/表格日期及适用组别。新库头为 `0009_opportunity_review`；已有实例先备份，停止写入并显式 `storage-init`，然后使用新的 `notifications-policy-update --operation-id policy-v10-selected --at <实际UTC秒> --preview` 核对/登记政策。版本不兼容期间不会自动以新版规则修改旧决定。2026-10-21已按该流程为UC／CS生产实例迁移至0009并显式启用v10，逐表行摘要、原画像和冻结邮件校验通过，见[上线记录](validation/rollout-summary-20261021.md)。历史v9交付时未部署的记录保留，不再表示当前生产状态。
 
 `notifications-reevaluate`继续只处理真实已有事件，不声称能补回event=0的历史通知。新增 `notifications-review-open` 是独立document级回顾：默认只读，显式身份/操作ID/时间加`--apply`后冻结整组，确认开放者才取得一次投递资格。操作恢复不重新解释原事实；旧启用时间、成员状态、live内容比较基线及冻结邮件不改写。默认走Digest，短截止早于下次Digest可走既有立即意图；digest_only仍优先。详见[机会回顾](open-opportunity-review.md)。
