@@ -47,19 +47,25 @@ def test_synthetic_content_identity_is_bound_to_extracted_facts(case):
 
 
 @pytest.mark.parametrize(
-    "case,deadline",
+    "case,deadline,eligibility",
     [
-        ("OPEN_PRIMARY", "2026-10-23T23:59:59+08:00"),
-        ("OPEN_GROUPED", "2026-10-31T23:59:59+08:00"),
-        ("OPEN_MIDNIGHT", "2026-11-01T00:00:00+08:00"),
+        ("OPEN_PRIMARY", "2026-10-23T23:59:59+08:00", "eligible"),
+        ("OPEN_GROUPED", "2026-10-31T23:59:59+08:00", "unknown"),
+        ("OPEN_MIDNIGHT", "2026-11-01T00:00:00+08:00", "eligible"),
     ],
 )
-def test_three_old_but_open_synthetic_opportunities_are_digest_candidates(case, deadline):
+def test_three_old_but_open_synthetic_opportunities_are_digest_candidates(
+    case, deadline, eligibility
+):
     item = content(case)
     facts, result = evaluate(item)
     assert (AT.date() - item.published_date).days > 7
     assert result.effective_route == "digest" and result.time_status == "open"
-    assert result.eligibility == "unknown" and result.needs_review
+    # The short PRIMARY/MIDNIGHT replacements state only known qualifications;
+    # GROUPED retains the conservative mixed-audience unknown, with full-time /
+    # attachment unknowns covered explicitly by the OPEN_UNCERTAIN case below.
+    assert result.eligibility == eligibility
+    assert result.needs_review is (eligibility == "unknown")
     assert deadline_for_profile(facts, PROFILE).deadline_at.isoformat() == deadline
     assert result.facts_sha256 == facts.sha256()
     for proof in result.evidence:

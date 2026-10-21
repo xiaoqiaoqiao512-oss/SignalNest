@@ -51,7 +51,9 @@ from signalnest.schema import (
 )
 from signalnest.storage import initialize_storage, migration_config
 
-ACT = int(datetime.fromisoformat("2026-10-11T12:34:04+08:00").timestamp())
+# The synthetic notices were republished on Oct 10 during de-identification;
+# activate beyond the seven-day gate to retain this suite's history-review setup.
+ACT = int(datetime.fromisoformat("2026-10-18T12:34:04+08:00").timestamp())
 AT = int(datetime.fromisoformat("2026-10-19T12:00:00+08:00").timestamp())
 CASES = json.loads(
     (Path(__file__).parent / "fixtures/notification-open-opportunities-synthetic.json").read_text()
@@ -85,7 +87,8 @@ def review_env(state_env):
     discover_page(env.engine, SOURCE, page, ACT - 20)
     complete_scan_fact(env)  # Explicit synthetic bootstrap fact, not a website scan.
     activate_notifications(env.engine, SOURCE, PROFILE, OPTIONS, at=ACT)
-    start_live(env, at=ACT + 1)
+    # The synthetic parser contract must match this run's declared rules version.
+    start_live(env, at=ACT + 1, parser_version="synthetic-notice-v1")
     for i, case in enumerate(CASES):
         notice = ParsedNotice(
             source_document_id=case["source_document_id"],
@@ -110,7 +113,10 @@ def test_history_gate_has_no_event_but_document_review_finds_three_open_candidat
     before = rows(env, notification_activation_members), rows(env, notification_observations)
     preview = preview_open_opportunities(env.engine, SOURCE, IDS, at=AT)
     assert preview["open_count"] == 3 and preview["creates_delivery"] is False
-    assert all(item["decision"]["needs_review"] for item in preview["items"])
+    for item in preview["items"]:
+        mixed_audience = item["source_document_id"] == CASES[1]["source_document_id"]
+        assert item["decision"]["eligibility"] == ("unknown" if mixed_audience else "eligible")
+        assert item["decision"]["needs_review"] is mixed_audience
     assert before == (
         rows(env, notification_activation_members),
         rows(env, notification_observations),
