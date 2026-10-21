@@ -1,6 +1,7 @@
 """Create private, paused, hash-bound query copies from verified consistent backups.
 
-No production connection, HTTP, mail credentials, migration or collection is used.
+No production connection, HTTP, mail credentials or collection is used.
+Schema upgrades require --upgrade-copy and affect only the private derivative.
 The original backup is read only; the destination must not already exist.
 """
 
@@ -15,7 +16,11 @@ import time
 from contextlib import closing
 from pathlib import Path
 
+from alembic import command
+from alembic.script import ScriptDirectory
+from alembic.util.exc import CommandError
 from pydantic import Field, ValidationError, model_validator
+from sqlalchemy.exc import SQLAlchemyError
 
 # This repository-owned utility is also executable as ``python deploy/...py``.
 if __package__ in (None, ""):
@@ -35,6 +40,10 @@ from signalnest.querying.snapshots import (
     validate_snapshot,
 )
 from signalnest.sources import SourceName, source_binding
+from signalnest.storage import make_engine, migration_config
+
+UPGRADE_FROM = "0008_list_references"
+UPGRADE_TO = "0009_opportunity_review"
 
 
 class BackupInstance(Contract):
@@ -83,18 +92,48 @@ def _instance_config(instance: BackupInstance) -> str:
     )
 
 
+def _parent_revision(database: Path) -> str:
+    safe_snapshot_path(database)
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+        connection.execute("PRAGMA query_only=ON")
+        if connection.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+            raise QueryError("snapshot_database_integrity")
+        if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise QueryError("snapshot_foreign_keys")
+        revisions = connection.execute("SELECT version_num FROM alembic_version").fetchall()
+        if len(revisions) != 1:
+            raise QueryError("snapshot_revision_unsupported")
+        return revisions[0][0]
+
+
+def _upgrade_query_copy(database: Path) -> None:
+    """Explicit migration of our unpublished copy; never initialize paths or raw/."""
+    engine = make_engine(database, must_exist=True)
+    try:
+        with engine.begin() as connection:
+            config = migration_config()
+            config.attributes["connection"] = connection
+            command.upgrade(config, UPGRADE_TO)
+    except (SQLAlchemyError, CommandError) as exc:
+        raise QueryError("snapshot_copy_upgrade_failed") from exc
+    finally:
+        engine.dispose()
+
+
 def prepare_query_snapshot(
     spec: SnapshotSpec,
     output: Path,
     *,
     profile: Path | None = None,
     prepared_at: int | None = None,
+    upgrade_copy: bool = False,
 ) -> dict:
     """Publish one new local directory only after all sources pass validation.
 
     `snapshot_at` is supplied by the backup producer, not assigned from import time.
     Originals, raw files, mail histories and source timestamps are never rewritten.
     The derived DB retains historical tables but pauses every notification channel.
+    The only supported optional upgrade is 0008 -> 0009, in the unpublished copy.
     """
     output = output.expanduser().absolute()
     _no_symlink_directory(output.parent)
@@ -123,7 +162,16 @@ def prepare_query_snapshot(
             if any(Path(str(original) + s).exists() for s in ("-wal", "-shm", "-journal")):
                 raise QueryError("snapshot_database_not_frozen")
             parent_sha = database_sha256(original)
-            verified = verify_backup(original, backup)
+            parent_revision = _parent_revision(original)
+            head = ScriptDirectory.from_config(migration_config()).get_current_head()
+            needs_upgrade = parent_revision != head
+            if needs_upgrade:
+                if not upgrade_copy:
+                    raise QueryError("snapshot_schema_upgrade_required")
+                if (parent_revision, head) != (UPGRADE_FROM, UPGRADE_TO):
+                    raise QueryError("snapshot_revision_unsupported")
+            else:
+                verified = verify_backup(original, backup)
             destination = stage / item.id
             destination.mkdir(mode=0o700)
             database = destination / "signalnest.sqlite3"
@@ -144,6 +192,12 @@ def prepare_query_snapshot(
                     )
                 if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
                     raise QueryError("snapshot_binding_mismatch")
+            if needs_upgrade:
+                _upgrade_query_copy(database)
+                # Full verification uses the original raw store without copying it.
+                verified = verify_backup(database, backup)
+            if database_sha256(original) != parent_sha:
+                raise QueryError("snapshot_parent_changed")
             config = destination / "instance.toml"
             _private_text(config, _instance_config(item))
             settings = load_config(config)
@@ -153,6 +207,11 @@ def prepare_query_snapshot(
                 parent_database_sha256=parent_sha,
                 snapshot_at=item.snapshot_at,
                 prepared_at=at,
+                transformation=(
+                    "pause_and_upgrade_0008_to_0009_v1"
+                    if needs_upgrade
+                    else "pause_notification_channels_v1"
+                ),
                 facts=snapshot_facts(database, item.source_id),
             )
             manifest_path = destination / "snapshot.json"
@@ -167,6 +226,8 @@ def prepare_query_snapshot(
                     "snapshot_at": item.snapshot_at,
                     "source_id": item.source_id,
                     "verified_revision": verified["revision"],
+                    "parent_revision": parent_revision,
+                    "schema_upgraded_in_copy": needs_upgrade,
                 }
             )
         if profile is not None:
@@ -207,6 +268,11 @@ def main() -> int:
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--profile", type=Path)
+    parser.add_argument(
+        "--upgrade-copy",
+        action="store_true",
+        help="explicitly upgrade only a private 0008 derivative to 0009; originals stay read-only",
+    )
     args = parser.parse_args()
     try:
         safe_snapshot_path(args.spec.expanduser().absolute())
@@ -215,7 +281,9 @@ def main() -> int:
         if len(raw) > 32 * 1024:
             raise QueryError("snapshot_spec_invalid")
         spec = SnapshotSpec.model_validate_json(raw)
-        report = prepare_query_snapshot(spec, args.output, profile=args.profile)
+        report = prepare_query_snapshot(
+            spec, args.output, profile=args.profile, upgrade_copy=args.upgrade_copy
+        )
     except (OSError, sqlite3.Error, ConfigurationError, ProfileError):
         print("查询快照准备失败: snapshot_input_unavailable", file=sys.stderr)
         return 1

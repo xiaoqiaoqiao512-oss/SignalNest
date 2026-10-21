@@ -37,7 +37,9 @@ class QuerySnapshotManifest(Contract):
     parent_database_sha256: Digest
     snapshot_at: int = Field(strict=True, ge=0)
     prepared_at: int = Field(strict=True, ge=0)
-    transformation: Literal["pause_notification_channels_v1"] = "pause_notification_channels_v1"
+    transformation: Literal[
+        "pause_notification_channels_v1", "pause_and_upgrade_0008_to_0009_v1"
+    ] = "pause_notification_channels_v1"
     facts: SnapshotFacts
 
     @model_validator(mode="after")
@@ -149,6 +151,11 @@ def validate_snapshot(
             raise QueryError("snapshot_binding_mismatch")
         with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
             connection.execute("PRAGMA query_only=ON")
+            if manifest.transformation == "pause_and_upgrade_0008_to_0009_v1":
+                if connection.execute("SELECT version_num FROM alembic_version").fetchall() != [
+                    ("0009_opportunity_review",)
+                ]:
+                    raise QueryError("snapshot_binding_mismatch")
             if connection.execute(
                 "SELECT 1 FROM notification_channel_state WHERE paused=0 LIMIT 1"
             ).fetchone():

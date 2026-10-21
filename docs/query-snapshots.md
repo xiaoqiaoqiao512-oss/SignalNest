@@ -1,6 +1,6 @@
 # 真实知识库的只读查询副本
 
-查询可同时读取 UC、CS 的独立数据库；生产采集仍在原实例运行。第一轮日常查询把**已校验的一致备份**传到模型代理所在机器，再产生隔离的查询副本。它不是实时数据库，不启动采集、迁移、邮件或 timer。
+查询可同时读取 UC、CS 的独立数据库；生产采集仍在原实例运行。第一轮日常查询把**已校验的一致备份**传到模型代理所在机器，再产生隔离的查询副本。它不是实时数据库，不启动采集、邮件或 timer；默认不迁移。可用显式 `--upgrade-copy` 仅升级未发布的隔离副本，原库和原备份保持只读。
 
 ## 准备副本
 
@@ -47,6 +47,23 @@ uv run signalnest ask --config /private/tmp/signalnest-query/ask.local.toml \
 ```
 
 `--profile` 可省略；提供时只复制并校验这一份显式画像，不从生产配置猜测。`ask-config-check` 保持配置检查，不打开数据库；实际 `ask` 才验证清单与数据库。准备工具不依赖模型、SMTP 环境变量或真实网络。
+
+### 生产 0008 与新版 0009 的边界
+
+当前新版代码的 schema head 为 `0009_opportunity_review`；旧生产库为 `0008_list_references`。新版查询同样要求所读数据库达到当前 head，不能直接连接旧生产库，也不能仅以配置校验通过作为可查询的证明。准备旧备份时默认返回 `snapshot_schema_upgrade_required`，不会自动迁移。
+
+```sh
+# 显式对全新隔离副本执行 0008 -> 0009；不写原库或原备份。
+uv run --locked python deploy/prepare_query_snapshot.py \
+  --spec /private/tmp/query-spec.json --output /private/tmp/signalnest-query-new \
+  --profile /private/tmp/profile.personal.toml --upgrade-copy
+uv run --locked python deploy/query_readiness.py \
+  --config /private/tmp/signalnest-query-new/ask.local.toml
+```
+
+仅支持已知的 `0008 -> 0009` 转换；未知版本拒绝，不猜测迁移路径。临时副本先暂停通道，再通过现有 Alembic 事务迁移，并用新版完整备份校验验证关系、原文和邮件。成功后绑定新的数据库摘要，`transformation=pause_and_upgrade_0008_to_0009_v1` 明确记录这项转换；`prepared.json` 另存父版本、验证版本与 `schema_upgraded_in_copy`。相同 head 不执行迁移，旧的仅暂停清单继续可读。
+
+原备份摘要在复制和处理后复核；任一来源失败不发布整个目录，并清理普通失败的暂存目录。升级不更新政策、不重新决策、不重新渲染或恢复发送；冻结邮件、成员、投递和尝试记录保留。进程被强制终止时可能留下 `.query-snapshot-*` 私有暂存目录，应先核对再人工处理，不能把它当作已发布查询副本。迁移与目录发布不是跨文件事务，也不提供断电保证。
 
 输出父目录下先建立私有暂存目录，所有来源校验成功后发布完整目录。每个派生 DB 把 journal 模式固定为 DELETE，并在一个本地事务内将已有通知通道暂停为 `manual`，保留事件、冻结邮件、成员、尝试和正文成功状态。原备份和生产暂停状态不变。固定变换名为 `pause_notification_channels_v1`；清单分别记录父备份 DB SHA 与派生 DB SHA。派生 DB 为 `0400`，目录 `0700`，配置和元数据 `0600`。文件权限和只读查询不是防止所有者主动改写的安全边界；此目录应保持冻结，不与写入命令共用。
 
