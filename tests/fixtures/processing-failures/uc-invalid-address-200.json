@@ -1,0 +1,20 @@
+{
+  "format": "signalnest-site-error-response-v1",
+  "source": "uc",
+  "source_id": "whu-undergrad-student",
+  "source_document_id": "1517:128721",
+  "source_url": "https://uc.whu.edu.cn/2022/show.jsp?urltype=news.NewsContentUrl&wbtreeid=1517&wbnewsid=128721",
+  "response_id": 2941,
+  "fetched_at": 1792582241,
+  "status_code": 200,
+  "body_state": "complete",
+  "fixture": "uc-invalid-address-200.html",
+  "body_length": 101,
+  "body_sha256": "7ea6467646399a07765e3de58f22b0a7668dfed79564a640bff46b5ebb5391be",
+  "classification": "site_invalid_address_response",
+  "expected_error": {
+    "code": "missing_structure",
+    "field": "notice"
+  },
+  "note": "Exact saved production HTTP 200 response bytes, including the final newline. The site returned an invalid-address error page; this is not an article template change. response_id identifies the original production evidence, not a local test database row. Offline SQLite recheck tests reuse these error bytes with an existing successful notice fixture and do not claim that fixture is the original 128721 article."
+}
