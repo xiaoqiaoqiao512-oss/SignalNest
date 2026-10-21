@@ -1,0 +1,40 @@
+# WSL query-copy example, NOT an active deployment or an API model declaration.
+# Copy into a prepared snapshot directory; keep the actual generated instance bindings.
+timezone = "Asia/Shanghai"
+# Uncomment only when this explicit, checked profile was copied into the snapshot.
+# profile = "profile.toml"
+
+[[instances]]
+id = "uc"
+config = "uc/instance.toml"
+snapshot_manifest = "uc/snapshot.json"
+
+[[instances]]
+id = "cs"
+config = "cs/instance.toml"
+snapshot_manifest = "cs/snapshot.json"
+
+[limits]
+max_model_calls = 6
+max_requests = 6
+max_tool_calls = 16
+run_seconds = 90.0
+max_tool_chars = 60000
+notice_chunk_chars = 4000
+max_read_notices = 6
+results_per_source = 5
+
+# Intentionally disabled until an actual endpoint and exact API model ID are supplied.
+# The preferred model's display name is not assumed to be an API identifier.
+# [model]
+# provider = "openai-compatible-chat-completions"
+# base_url = "https://your-model-endpoint.example/v1"
+# model = "REPLACE_WITH_EXACT_MODEL_ID"
+# api_key_env = "SIGNALNEST_MODEL_API_KEY"
+# timeout_seconds = 20.0
+# max_attempts = 1
+# max_completion_tokens = 2048
+# token_limit_parameter = "max_tokens"
+# pricing_mode = "unpriced_proxy"
+# Unknown prices stay unknown; request/time/output limits are not a currency cap.
+# Never put a key here. Use the launching environment or ask_saved.py --api-key-file.

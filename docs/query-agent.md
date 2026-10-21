@@ -10,6 +10,8 @@
 
 ## 模型与预算
 
+部署前可用[WSL 查询准备流程](wsl-query-setup.md)与 `deploy/query_readiness.py` 检查本地存储、索引和快照。它没有网络或凭据检查，不能以通过结果声称已经接通模型；查询新版要求当前 schema，旧生产 `0008` 只能显式升级独立副本后使用。
+
 先固定 OpenAI Chat Completions 的函数调用消息交接，用同步 HTTPX，显式超时，无自动重定向、环境代理或底层重试。官方提供方保持固定 HTTPS 地址；兼容接口必须显式配置 `provider` 和 `base_url`，路径只接受 `/v1`，拒绝凭据、query和fragment。远程只接受HTTPS，HTTP仅允许字面回环地址127.0.0.1或::1；不将localhost的DNS解析当成回环保证。密钥只在实际模型查询时从指定环境变量读取。问题、工具返回的有限通知文本和查询画像会发送给选定提供方；`--local` 不调用模型。
 
 一次查询限制逻辑模型轮数、实际 HTTP 次数、工具次数、返回字符量、通知数量、输出 token 和总运行时间。只有适配器拥有重试层；发送可能已发生的读/写失败不自动重试。`pricing_mode=token_rates`要求操作者填写输入/输出USD单价，每次物理请求前按JSON UTF-8字节数加余量预留费用；无有效usage按预留计费。该上限是应用估算，不是供应商账单保证。兼容代理不知道单价时，须显式选择`unpriced_proxy`并省略价格和USD预算：费用输出null，`price_source=unknown`，仍限制请求、时间与输出，不承诺美元或账户额度上限。超限停止，返回已有检索结果。
@@ -111,7 +113,7 @@ v1、v2、v3 已保存的回放、独立人工记录和版本字段保持原样�
 
 退出码：0 为正常回答/明确本地检索，1 为模型降级或工具不完整（报告仍输出），2 为配置或问题/时间参数错误。stdout 为答案/报告，stderr 仅结构化 ask_started / ask_finished 与有限诊断；不持久化查询或改变既有日志保留策略。
 
-官方协议依据：[Chat Completions创建接口](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)及[函数调用交接](https://developers.openai.com/api/docs/guides/function-calling)。最初节点完全离线；后续兼容代理有受限真实HTTP验证，尚无OpenAI官方调用、真实费用、完整人工模型质量或生产查询部署验收；首周观察仍按原窗口进行。
+官方协议依据：[Chat Completions创建接口](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)及[函数调用交接](https://developers.openai.com/api/docs/guides/function-calling)。最初节点完全离线；后续兼容代理有受限真实HTTP验证，尚无OpenAI官方调用、真实费用或完整人工模型质量验收；2026-10-21 已另行完成 WSL 独立查询安装与真实模型基础接入，未切换生产采集/邮件，见[接入记录](validation/rollout-summary-20261021.md)；首周观察仍按原窗口进行。
 
 后续已补[固定样本回放与独立人工评价入口](query-evaluation.md)：本地默认零模型请求，显式模型开关有整批预算；候选召回与回答证据分别核对，不把工程回归期望填成真人判断。
 

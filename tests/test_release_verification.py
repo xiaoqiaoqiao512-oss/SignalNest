@@ -59,6 +59,7 @@ def test_public_query_and_windows_delivery_files_have_explicit_allowlist():
     expected = {
         "ask.example.toml",
         "ask.proxy.example.toml",
+        "ask.wsl.example.toml",
         "config.example.toml",
         "config.cs.example.toml",
         "profile.example.toml",
@@ -66,12 +67,15 @@ def test_public_query_and_windows_delivery_files_have_explicit_allowlist():
         "deploy/evaluate_queries.py",
         "deploy/evaluate_search.py",
         "deploy/prepare_query_snapshot.py",
+        "deploy/query_readiness.py",
         "deploy/replay_query_snapshot.py",
         "deploy/windows/repair-keepalive.ps1",
         "deploy/windows/wsl-keepalive.ps1",
         "docs/query-release.md",
         "docs/query-snapshots.md",
         "docs/query-snapshot-replay.md",
+        "docs/wsl-query-setup.md",
+        "docs/operations.md",
     }
     assert expected <= manifest["file_sha256"].keys()
     for name in expected:

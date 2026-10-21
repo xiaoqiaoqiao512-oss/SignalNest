@@ -14,6 +14,7 @@
 - `deploy/evaluate_queries.py`、`evaluate_search.py`。
 - `deploy/prepare_query_snapshot.py`、`replay_query_snapshot.py`、`ask_saved.py` ，以及查询接口、快照、回放和发布四份说明。
 - `ask.example.toml`、`ask.proxy.example.toml`、两份普通配置示例、两份画像示例。
+- `ask.wsl.example.toml`、`deploy/query_readiness.py`、[WSL 查询准备说明](wsl-query-setup.md)和其引用的一致备份运维说明：模型默认关闭，检查真实存储与索引，旧备份仅能显式升级独立副本。
 
 示例只提供格式，不代表个人画像、模型价格、真实实例路径或已验收配置。实际密钥仅从配置指定的环境变量读取。绝不将密钥写进示例。允许集合没有扩大成 `*.toml`、`deploy/**` 或 `docs/**`：私人配置、SMTP 环境文件、数据库、raw、研究 fixture、验证报告和测试数据均不进入快照。解包后的 `RELEASE.json` 不会被再次收进内容摘要。只读数据准备和回放入口分别见[快照说明](query-snapshots.md)与[回放说明](query-snapshot-replay.md)。
 

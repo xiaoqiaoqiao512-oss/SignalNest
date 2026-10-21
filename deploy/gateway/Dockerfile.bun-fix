@@ -1,0 +1,5 @@
+# Build only after verifying the base image ID and the official Bun binary hash.
+# The local build context must contain this Dockerfile and the verified file bun.
+ARG VERIFIED_BASE_IMAGE
+FROM ${VERIFIED_BASE_IMAGE}
+COPY --chmod=0755 bun /usr/local/bin/bun

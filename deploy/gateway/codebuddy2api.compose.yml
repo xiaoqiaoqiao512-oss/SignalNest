@@ -1,0 +1,55 @@
+# Gateway only: SignalNest itself continues to run as a host Python application.
+# Set the verified local image ID in the external --env-file, never use latest.
+name: signalnest-codebuddy
+
+services:
+  gateway:
+    image: ${CODEBUDDY2API_IMAGE:?Set a verified local image ID}
+    pull_policy: never
+    container_name: signalnest-codebuddy2api
+    init: true
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8002:8001'
+    env_file:
+      - /etc/codebuddy2api-wsl/storage.env
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: '8001'
+      NEXT_TELEMETRY_DISABLED: '1'
+      CODEBUDDY_STORAGE_BACKEND: sqlite
+      CODEBUDDY_STORAGE_SQLITE_PATH: /app/.codebuddy_data/storage.sqlite
+      CODEBUDDY_STORAGE_FILE_DIR: /app/.codebuddy_data
+      CODEBUDDY_CREDENTIALS_DIR: /app/.codebuddy_creds
+      CODEBUDDY_STORAGE_IMPORT_LEGACY_FILES: 'false'
+      CODEBUDDY_ADMIN_TRUST_PROXY: 'false'
+      CODEBUDDY_LOG_LEVEL: INFO
+    volumes:
+      - /var/lib/codebuddy2api-wsl/data:/app/.codebuddy_data
+      - /var/lib/codebuddy2api-wsl/credentials:/app/.codebuddy_creds
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    logging:
+      driver: local
+      options:
+        max-size: '10m'
+        max-file: '3'
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - "const r = await fetch('http://127.0.0.1:8001/health'); if (!r.ok) process.exit(1);"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s

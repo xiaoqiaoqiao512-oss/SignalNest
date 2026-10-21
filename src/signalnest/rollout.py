@@ -56,6 +56,7 @@ RELEASE_PUBLIC_FILES = frozenset(
     {
         "ask.example.toml",
         "ask.proxy.example.toml",
+        "ask.wsl.example.toml",
         "config.example.toml",
         "config.cs.example.toml",
         "profile.example.toml",
@@ -67,6 +68,7 @@ RELEASE_PUBLIC_FILES = frozenset(
         "deploy/prepare_query_snapshot.py",
         "deploy/replay_query_snapshot.py",
         "deploy/ask_saved.py",
+        "deploy/query_readiness.py",
         "deploy/release_snapshot.py",
         "deploy/observe_instance.py",
         "deploy/summarize_observations.py",
@@ -77,6 +79,8 @@ RELEASE_PUBLIC_FILES = frozenset(
         "docs/query-agent.md",
         "docs/query-snapshots.md",
         "docs/query-snapshot-replay.md",
+        "docs/wsl-query-setup.md",
+        "docs/operations.md",
     }
 )
 EXTERNAL_VERIFICATIONS = (
